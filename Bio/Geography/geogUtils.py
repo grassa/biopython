@@ -1,5 +1,7 @@
 import shpUtils
 import dbfUtils
+from Bio import Entrez as Entrez
+from xml.etree import ElementTree as ET
 
 def readshpfile(fn):
 	
@@ -179,13 +181,35 @@ def tablefile_points_in_poly(fh, ycol, xcol, namecol, poly):
 
 def print_subelements(element):
 	if element.__len__() == 0:
+		# Print the text beginning the tag header, and between the tags
 		print element.tag, element.text
+
+		# Check for any key/value pairs included in the tag header,
+		# and print them if they exist
+		if len(element.items()) > 0:
+			print "Encoded items: ", element.items()
 		return
 	elif element.__len__() > 0:
 		print element.tag, element.text, "#subelements =", element.__len__()
 		for subelement in element.getchildren():
 			print_subelements(subelement)
 		return
+
+
+def element_items_to_dictionary(element_items):
+	for item in element_items:
+		temp_dict[item[0][1]] = item[1][1]
+	"""
+	temp_dict = element_items_to_dictionary(element.keys())
+	for key in temp_dict.keys():
+		print key, ": ", temp_dict[key]
+		# Check if there is more than a key/value pair
+		if len(element.keys()) > 2:
+			print "There is more than a key/value pair encoded in this element"
+			print element.items()
+	"""
+	return temp_dict
+
 
 def extract_latlong(element, outfh):
 	if element.__len__() == 0:
@@ -204,3 +228,213 @@ def extract_latlong(element, outfh):
 		return ('tag: parent subelement', 'text: multiple subelements')
 
 
+
+
+
+def access_gbif(url, params):
+	"""
+	# Helper function to access various GBIF services
+	# 
+	# choose the URL ("url") from here:
+	# http://data.gbif.org/ws/rest/occurrence
+	#
+	# params are a dictionary of key/value pairs
+	#
+	# "_open" is from Bio.Entrez._open, online here: 
+	# http://www.biopython.org/DIST/docs/api/Bio.Entrez-pysrc.html#_open
+	#
+	# Get the handle of results
+	# (looks like e.g.: <addinfourl at 75575128 whose fp = <socket._fileobject object at 0x48117f0>> )
+	
+	# (open with results_handle.read() )
+	"""
+	print 'Accessing GBIF with access_gbif...'
+	
+
+	results_handle = Entrez._open(url, params)
+	return results_handle
+
+
+def get_hits(params):
+	"""
+	Get the number of hits that will be returned by a given search
+	(this allows parsing & gradual downloading of searches larger 
+	than e.g. 1000 records)
+
+	It will return the LAST non-none instance (in a standard search result there
+	should be only one, anyway).
+	"""
+	
+	print ''
+	print 'Running get_hits(params)...'
+
+	# URL for the count utility
+	# instructions: http://data.gbif.org/ws/rest/occurrence
+	url = 'http://data.gbif.org/ws/rest/occurrence/list'
+
+	cmd = url + paramsdict_to_string(params)
+	results_handle = access_gbif(url, params)
+	
+	xmlstring = results_handle.read()
+	
+	# Save to a tempfile
+	fn ='tempxml_unfixed.xml'
+	fh = open(fn, 'w')
+	fh.write(xmlstring)
+	fh.close()
+	
+	"""
+	new_fn = fix_ASCII(fn)
+	
+	# make sure the file is findable
+	try:
+		xmltree = ET.parse(new_fn)
+	except Exception, inst:
+		print "Unexpected error opening %s: %s" % (new_fn, inst)
+
+	
+	xmltree = xmlstring_to_xmltree(xmlstring)
+	#print_xmltree(xmltree)
+	"""
+	
+	print 'XML search results saved in: ', fn
+	
+	return fn
+
+
+
+
+def fix_ASCII(fn_unfixed):
+	fn_fixed = fn_unfixed.replace('unfixed', 'fixed')
+	fh = open(fn_unfixed, 'r')
+	fh_fixed = open(fn_fixed, 'w')
+	for line in fh:
+		# EXPLICITLY convert to content to unicode
+		ucontent = unicode(line, 'latin-1')
+		# Replace the unicode characters wih ASCII ones...
+		# This depends on what's in your content.
+		ascii_content = ucontent.replace(u'\xe4\xa0', u' ')
+		ascii_content = ucontent.replace(u'\xc2\xa0', u' ')
+		ascii_content = ascii_content.replace(u'\xe2\x80\x90', u'-')
+		ascii_content = ascii_content.replace(u'\xe2\x80\x99', u"\\'")
+	
+		fh_fixed.write(ascii_content)
+
+	fh_fixed.close()
+	fh.close()
+	return fn_fixed
+
+
+
+def paramsdict_to_string(params):
+	temp_outstring_list = []
+	for key in params.keys():
+		temp_outstring_list.append(key + '=' + params[key])
+		
+	outstring = '&'.join(temp_outstring_list)
+	return outstring
+
+
+
+
+def get_numhits(params):
+	"""
+	Get the number of hits that will be returned by a given search
+	(this allows parsing & gradual downloading of searches larger 
+	than e.g. 1000 records)
+
+	It will return the LAST non-none instance (in a standard search result there
+	should be only one, anyway).
+	"""
+	
+	print ''
+	print 'Running get_numhits(params)...'
+
+	# URL for the count utility
+	# instructions: http://data.gbif.org/ws/rest/occurrence
+	url = 'http://data.gbif.org/ws/rest/occurrence/count'
+
+	cmd = url + paramsdict_to_string(params)
+	results_handle = access_gbif(url, params)
+	
+	xmlstring = results_handle.read()
+	xmltree = xmlstring_to_xmltree(xmlstring)
+	#print_xmltree(xmltree)
+	
+	
+	for element in xmltree.getroot():
+		temp_numhits = extract_numhits(element)
+		if temp_numhits != None:
+			numhits = temp_numhits
+	
+	print "numhits = ", numhits
+	return numhits
+
+
+
+
+
+
+def extract_numhits(element):
+	#print "Running extract_numhits(element)..."
+	if element.__len__() == 0:
+		if len(element.items()) > 0:
+			for item in element.items():
+				for index, tupleitem in enumerate(item):
+					if tupleitem == 'totalMatched':
+						#print item
+						#print int(item[index+1])
+						return int(item[index+1])
+					else:
+						temp_return_item = None
+	elif element.__len__() > 0:
+		#print element.tag, element.text, "#subelements =", element.__len__()
+		for subelement in element.getchildren():
+			temp_return_item = extract_numhits(subelement)
+		if temp_return_item != None:
+			return_item = temp_return_item
+			return return_item
+		else:
+			return return_item
+			
+
+
+	
+
+def xmlstring_to_xmltree(xmlstring):
+	tempfn = 'tempxml.xml'
+	fh = open(tempfn, 'w')
+	fh.write(xmlstring)
+	fh.close()
+	
+	# instructions for ElementTree:
+	# http://docs.python.org/library/xml.etree.elementtree.html
+
+	# make sure the file is findable
+	try:
+		xmltree = ET.parse(tempfn)
+	except Exception, inst:
+		print "Unexpected error opening %s: %s" % (tempfn, inst)
+
+	# make sure the file is parsable
+	try:
+		xmltree.getroot()
+	except Exception, inst:
+		print "Unexpected error running getroot() on text in file %s: %s" % (tempfn, inst)
+
+	return xmltree
+
+	
+
+def print_xmltree(xmltree):
+	
+	for element in xmltree.getroot():
+		print element
+
+	for element in xmltree.getroot():
+		print element
+		print_subelements(element)
+
+
+
+	
