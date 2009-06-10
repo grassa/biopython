@@ -1,3 +1,6 @@
+# Source: 
+# http://code.google.com/p/primary-maps-2008/source/browse/trunk/shpUtils.py
+
 from struct import unpack
 import dbfUtils, math
 XY_POINT_RECORD_LENGTH = 16
