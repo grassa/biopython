@@ -2,6 +2,10 @@ import shpUtils
 import dbfUtils
 from Bio import Entrez as Entrez
 from xml.etree import ElementTree as ET
+import unicodedata
+from AsciiDammit import asciiDammit
+import re, htmlentitydefs
+
 
 def readshpfile(fn):
 	
@@ -108,7 +112,7 @@ def summarize_shapefile(fn, output_option, outfn):
 
 
 
-
+def point_inside_polygon(x,y,poly):
 # Code from here:
 # http://www.ariel.com.au/a/python-point-int-poly.html
 #
@@ -117,8 +121,6 @@ def summarize_shapefile(fn, output_option, outfn):
 #
 # determine if a point is inside a given polygon or not
 # Polygon is a list of (x,y) pairs.
-
-def point_inside_polygon(x,y,poly):
 
     n = len(poly)
     inside = False
@@ -159,6 +161,10 @@ def tablefile_points_in_poly(fh, ycol, xcol, namecol, poly):
 	num_inside = 0
 	for index,line in enumerate(fh):
 		words = line.split()
+		
+		if len(words) < 3:
+			continue
+		
 		x = float(words[xcol])
 		y = float(words[ycol])
 		inside = point_inside_polygon(x, y, poly)
@@ -180,6 +186,10 @@ def tablefile_points_in_poly(fh, ycol, xcol, namecol, poly):
 
 
 def print_subelements(element):
+	"""
+	Takes an element from an XML tree and prints the subelements tag & text, and
+	the within-tag items (key/value or whatnot)
+	"""	
 	if element.__len__() == 0:
 		# Print the text beginning the tag header, and between the tags
 		print element.tag, element.text
@@ -197,6 +207,10 @@ def print_subelements(element):
 
 
 def element_items_to_dictionary(element_items):
+	"""
+	If the XML tree element has items encoded in the tag, e.g. key/value or whatever,
+	this function puts them in a python dictionary and returns them.
+	"""	
 	for item in element_items:
 		temp_dict[item[0][1]] = item[1][1]
 	"""
@@ -212,6 +226,10 @@ def element_items_to_dictionary(element_items):
 
 
 def extract_latlong(element, outfh):
+	"""
+	Searches an element in an XML tree for lat/long information, and the 
+	complete name. Searches recursively, if there are subelements.
+	"""
 	if element.__len__() == 0:
 		return (element.tag, element.text)
 	elif element.__len__() > 0:
@@ -282,19 +300,13 @@ def get_hits(params):
 	fh = open(fn, 'w')
 	fh.write(xmlstring)
 	fh.close()
+
+
 	
 	"""
 	new_fn = fix_ASCII(fn)
 	
-	# make sure the file is findable
-	try:
-		xmltree = ET.parse(new_fn)
-	except Exception, inst:
-		print "Unexpected error opening %s: %s" % (new_fn, inst)
-
-	
-	xmltree = xmlstring_to_xmltree(xmlstring)
-	#print_xmltree(xmltree)
+	#
 	"""
 	
 	print 'XML search results saved in: ', fn
@@ -303,21 +315,65 @@ def get_hits(params):
 
 
 
+def get_xml_hits(params):
+	print ''
+	print 'Running get_xml_hits(params)...'
+
+	# URL for the count utility
+	# instructions: http://data.gbif.org/ws/rest/occurrence
+	url = 'http://data.gbif.org/ws/rest/occurrence/list'
+
+	cmd = url + paramsdict_to_string(params)
+	results_handle = access_gbif(url, params)
+	
+	xmlstring = results_handle.read()
+	
+	
+	# Save to a tempfile
+	fn_unfixed ='tempxml_unfixed.xml'
+	fh = open(fn_unfixed, 'w')
+	fh.write(xmlstring)
+	fh.close()
+
+	fn = fix_ASCII(fn_unfixed)
+
+	# make sure the file is findable
+	try:
+		xmltree = ET.parse(fn)
+	except Exception, inst:
+		print "Unexpected error opening %s: %s" % (fn, inst)
+
+	print fn
+	#xmltree = ET.parse(fn)
+	
+	#print_xmltree(xmltree)
+	
+	return xmltree
+
 
 def fix_ASCII(fn_unfixed):
+	# 
+	# Search-replace to fix annoying 
+	# non-ASCII characters in search results
+	# 
+	# inspiration:
+	# http://www.amk.ca/python/howto/unicode
+	# http://www.peterbe.com/plog/unicode-to-ascii
+	#
 	fn_fixed = fn_unfixed.replace('unfixed', 'fixed')
 	fh = open(fn_unfixed, 'r')
 	fh_fixed = open(fn_fixed, 'w')
 	for line in fh:
-		# EXPLICITLY convert to content to unicode
-		ucontent = unicode(line, 'latin-1')
-		# Replace the unicode characters wih ASCII ones...
-		# This depends on what's in your content.
-		ascii_content = ucontent.replace(u'\xe4\xa0', u' ')
-		ascii_content = ucontent.replace(u'\xc2\xa0', u' ')
-		ascii_content = ascii_content.replace(u'\xe2\x80\x90', u'-')
-		ascii_content = ascii_content.replace(u'\xe2\x80\x99', u"\\'")
-	
+		
+		# library from here: http://effbot.org/zone/re-sub.htm#unescape-html
+		ascii_content2 = unescape(line)
+		
+		# inspiration: http://www.amk.ca/python/howto/unicode
+		ascii_content = unicodedata.normalize('NFKD', unicode(ascii_content2)).encode('ascii','ignore')
+		
+		ascii_content = fix_ampersand(ascii_content)
+		
+		print ascii_content		
 		fh_fixed.write(ascii_content)
 
 	fh_fixed.close()
@@ -325,8 +381,16 @@ def fix_ASCII(fn_unfixed):
 	return fn_fixed
 
 
+def fix_ampersand(line):
+    return line.replace('&', '&amp;')
+
 
 def paramsdict_to_string(params):
+	"""
+	# Converts the python dictionary of search parameters into a text 
+	# string for submission to GBIF
+	"""
+	
 	temp_outstring_list = []
 	for key in params.keys():
 		temp_outstring_list.append(key + '=' + params[key])
@@ -376,7 +440,13 @@ def get_numhits(params):
 
 
 def extract_numhits(element):
-	#print "Running extract_numhits(element)..."
+	"""
+	# Search an element of a parsed XML string and find the 
+	# number of hits, if it exists.  Recursively searches, 
+	# if there are subelements.
+	# 
+	"""
+	# print "Running extract_numhits(element)..."
 	if element.__len__() == 0:
 		if len(element.items()) > 0:
 			for item in element.items():
@@ -402,6 +472,9 @@ def extract_numhits(element):
 	
 
 def xmlstring_to_xmltree(xmlstring):
+	"""
+	Take the text string returned by GBIF and parse to an XML tree using ElementTree.  Requires the intermediate step of saving to a temporary file (required to make ElementTree.parse work, apparently)
+	"""
 	tempfn = 'tempxml.xml'
 	fh = open(tempfn, 'w')
 	fh.write(xmlstring)
@@ -430,11 +503,35 @@ def print_xmltree(xmltree):
 	
 	for element in xmltree.getroot():
 		print element
-
-	for element in xmltree.getroot():
-		print element
 		print_subelements(element)
 
 
 
+
+def unescape(text):
+##
+# Removes HTML or XML character references and entities from a text string.
+#
+# @param text The HTML (or XML) source text.
+# @return The plain text, as a Unicode string, if necessary.
+# source: http://effbot.org/zone/re-sub.htm#unescape-html
+    def fixup(m):
+        text = m.group(0)
+        if text[:2] == "&#":
+            # character reference
+            try:
+                if text[:3] == "&#x":
+                    return unichr(int(text[3:-1], 16))
+                else:
+                    return unichr(int(text[2:-1]))
+            except ValueError:
+                pass
+        else:
+            # named entity
+            try:
+                text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
+            except KeyError:
+                pass
+        return text # leave as is
+    return re.sub("&#?\w+;", fixup, text)
 	

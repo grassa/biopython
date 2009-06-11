@@ -2,7 +2,7 @@
 import os
 from geogUtils import readshpfile, summarize_shapefile, point_inside_polygon, shapefile_points_in_poly
 
-from geogUtils import access_gbif, get_numhits, get_hits, print_xmltree
+from geogUtils import access_gbif, get_numhits, get_hits, print_xmltree, get_xml_hits
 
 
 print ""
@@ -32,6 +32,75 @@ params = {'format': 'darwin', 'scientificname': 'Utricularia', 'maxresults' : st
 numhits = get_numhits(params)
 print numhits
 
+
+
+xmltree = get_xml_hits(params)
+
+print_xmltree(xmltree)
+
+
+
+
+
+
+
+# =====================================
+# Point-in-polygon operation
+# =====================================
+
+from geogUtils import print_subelements, extract_latlong
+import os
+
+print ""
+print "2. Point-in-polygon operation."
+
+# Set up polygon
+ul = (-80, 80)
+ur = (0, 80)
+ll = (-80, 40)
+lr = (0, 40)
+poly = [ul, ur, ll, lr]
+
+outfilename = 'latlongs.txt'
+outfh = open(outfilename, 'w')
+for element in xmltree.getroot():
+	extract_latlong(element, outfh)
+outfh.close()
+
+
+
+
+
+# 
+os.system('head latlongs.txt')
+os.system('tail latlongs.txt')
+
+
+
+
+
+
+
+# =====================================
+# Classify GBIF records as to whether or not they fall inside region of interest
+# =====================================
+print ""
+print "4. Do the GBIF records fall inside the region of interest?"
+
+from geogUtils import tablefile_points_in_poly
+
+# Open the lat/longs table
+outfh = open(outfilename, 'r')
+
+tablefile_points_in_poly(outfh, 0, 1, 2, poly)
+
+outfh.close()
+
+
+
+"""
+stop
+
 # Getting the actual hits
 xmlfn = get_hits(params)
 
@@ -39,6 +108,7 @@ fh = open(xmlfn, 'r')
 for line in fh:
 	print line
 
+"""
 
 
  
