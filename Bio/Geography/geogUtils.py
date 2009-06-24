@@ -6,6 +6,19 @@ import unicodedata
 from AsciiDammit import asciiDammit
 import re, htmlentitydefs
 
+# These libraries come from the lagrange package:
+"""
+http://code.google.com/p/lagrange/
+Lagrange is a Python package implementing likelihood models for geographic range evolution on phylogenetic trees, with methods for inferring rates of dispersal and local extinction and ancestral ranges.
+
+This software implements methods described in Ree, R H and S A Smith. 2008. Maximum likelihood inference of geographic range evolution by dispersal, local extinction, and cladogenesis. Systematic Biology 57(1):4-14. 
+
+GNU General Public License v2
+"""
+import lagrange_newick
+import lagrange_phylo
+import lagrange_tree
+import lagrange_ascii
 
 def readshpfile(fn):
 	
@@ -14,11 +27,11 @@ def readshpfile(fn):
 	
 	# Try to open the file, print error if error	
 	try:
-	    f = open(fn)
-    # some code here
+		f = open(fn)
+	# some code here
 	except IOError, reason:
-	    print "couldn't open file, because of", reason
-	    return
+		print "couldn't open file, because of", reason
+		return
 
 	# load the shapefile, populating a list of dictionaries
 	shpRecords = shpUtils.loadShapefile(fn)
@@ -113,31 +126,33 @@ def summarize_shapefile(fn, output_option, outfn):
 
 
 def point_inside_polygon(x,y,poly):
-# Code from here:
-# http://www.ariel.com.au/a/python-point-int-poly.html
-#
-# NOTE: does not presently deal with the case of polygons that
-# cross the international dateline!
-#
-# determine if a point is inside a given polygon or not
-# Polygon is a list of (x,y) pairs.
+	"""
+	# Code from here:
+	# http://www.ariel.com.au/a/python-point-int-poly.html
+	#
+	# NOTE: does not presently deal with the case of polygons that
+	# cross the international dateline!
+	#
+	# determine if a point is inside a given polygon or not
+	#
+	# Polygon is a list of (x,y) pairs.
+	"""
+	n = len(poly)
+	inside = False
 
-    n = len(poly)
-    inside = False
+	p1x,p1y = poly[0]
+	for i in range(n+1):
+		p2x,p2y = poly[i % n]
+		if y > min(p1y,p2y):
+			if y <= max(p1y,p2y):
+				if x <= max(p1x,p2x):
+					if p1y != p2y:
+						xinters = (y-p1y)*(p2x-p1x)/(p2y-p1y)+p1x
+					if p1x == p2x or x <= xinters:
+						inside = not inside
+		p1x,p1y = p2x,p2y
 
-    p1x,p1y = poly[0]
-    for i in range(n+1):
-        p2x,p2y = poly[i % n]
-        if y > min(p1y,p2y):
-            if y <= max(p1y,p2y):
-                if x <= max(p1x,p2x):
-                    if p1y != p2y:
-                        xinters = (y-p1y)*(p2x-p1x)/(p2y-p1y)+p1x
-                    if p1x == p2x or x <= xinters:
-                        inside = not inside
-        p1x,p1y = p2x,p2y
-
-    return inside
+	return inside
 
 
 
@@ -201,6 +216,9 @@ def print_subelements(element):
 		return
 	elif element.__len__() > 0:
 		print element.tag, element.text, "#subelements =", element.__len__()
+		if len(element.items()) > 0:
+			print "Encoded items: ", element.items()
+
 		for subelement in element.getchildren():
 			print_subelements(subelement)
 		return
@@ -275,7 +293,7 @@ def access_gbif(url, params):
 
 def get_hits(params):
 	"""
-	Get the number of hits that will be returned by a given search
+	Get the actual hits that are be returned by a given search
 	(this allows parsing & gradual downloading of searches larger 
 	than e.g. 1000 records)
 
@@ -316,6 +334,10 @@ def get_hits(params):
 
 
 def get_xml_hits(params):
+	"""
+	Returns hits like get_hits, but returns a parsed XML tree.
+	"""
+	
 	print ''
 	print 'Running get_xml_hits(params)...'
 
@@ -352,14 +374,14 @@ def get_xml_hits(params):
 
 
 def fix_ASCII(fn_unfixed):
-	# 
+	"""
 	# Search-replace to fix annoying 
 	# non-ASCII characters in search results
 	# 
 	# inspiration:
 	# http://www.amk.ca/python/howto/unicode
 	# http://www.peterbe.com/plog/unicode-to-ascii
-	#
+	"""
 	fn_fixed = fn_unfixed.replace('unfixed', 'fixed')
 	fh = open(fn_unfixed, 'r')
 	fh_fixed = open(fn_fixed, 'w')
@@ -373,7 +395,7 @@ def fix_ASCII(fn_unfixed):
 		
 		ascii_content = fix_ampersand(ascii_content)
 		
-		print ascii_content		
+		#print ascii_content		
 		fh_fixed.write(ascii_content)
 
 	fh_fixed.close()
@@ -382,7 +404,7 @@ def fix_ASCII(fn_unfixed):
 
 
 def fix_ampersand(line):
-    return line.replace('&', '&amp;')
+	return line.replace('&', '&amp;')
 
 
 def paramsdict_to_string(params):
@@ -397,6 +419,202 @@ def paramsdict_to_string(params):
 		
 	outstring = '&'.join(temp_outstring_list)
 	return outstring
+
+
+def extract_taxonconceptkeys_tofile(element, outfh):
+	"""
+	Searches an element in an XML tree for TaxonOccurrence gbifKeys, and the complete 
+	sname. Searches recursively, if there are subelements.  Returns file at outfh.
+	"""
+	
+	#print ''
+	#print 'Running extract_taxonoccurrencekeys_tofile(element, outfh)'
+	
+	if element.__len__() == 0:
+		if element.tag.endswith('TaxonOccurrence'):
+			#print element.tag, element.text
+			for item in element.items():
+				if item[0] == 'gbifKey':
+					print item[0], item[1]
+					outfh.write(item[1] + '\n')
+					return item[1]
+	elif element.__len__() > 0:
+		if element.tag.endswith('TaxonOccurrence'):
+			#print element.tag, element.text
+			for item in element.items():
+				if item[0] == 'gbifKey':
+					print item[0], item[1]
+					outfh.write(item[1] + '\n')
+					return item[1]
+		else:
+			for subelement in element.getchildren():
+				#print_subelements(subelement)
+				returned_item = extract_taxonconceptkeys_tofile(subelement, outfh)
+		
+		return ('Error: no TaxonOccurrence gbifKey found')
+
+
+def extract_taxonconceptkeys_tolist(element, output_list):
+	"""
+	Searches an element in an XML tree for TaxonOccurrence gbifKeys, and the complete 
+	name. Searches recursively, if there are subelements.  Returns list.
+	"""
+	
+	#print ''
+	#print 'Running extract_taxonoccurrencekeys_tolist(element, outfh)'
+
+	# Error trap
+	#if output_list == None:
+	#	output_list = []
+	
+	#print len(output_list)
+	
+	if element.__len__() == 0:
+		if element.tag.endswith('TaxonOccurrence'):
+			#print element.tag, element.text
+			for item in element.items():
+				if item[0] == 'gbifKey':
+					print item[0], item[1]
+					output_list.append(item[1])
+					return output_list
+	elif element.__len__() > 0:
+		if element.tag.endswith('TaxonOccurrence'):
+			#print element.tag, element.text
+			for item in element.items():
+				if item[0] == 'gbifKey':
+					print item[0], item[1]
+					output_list.append(item[1])
+					return output_list
+		else:
+			for subelement in element.getchildren():
+				#print_subelements(subelement)
+				templist = extract_taxonconceptkeys_tolist(subelement, output_list)
+				
+				if templist == None:
+					#print "3" 
+					pass
+				elif len(templist) > 0:
+					output_list = templist
+					#print "4"
+					pass
+				else:
+					#print "5"
+					pass
+			return output_list
+		
+		return ('Error: no TaxonOccurrence output_list returned')
+
+
+
+def extract_occurrence_elements(element, output_list):
+	"""
+	Returns a list of the elements, picking elements by TaxonOccurrence; this should 
+	return a list of elements equal to the number of hits.
+	"""
+	
+	print ''
+	print 'Running extract_taxonoccurrencekeys_tolist(element, outfh)'
+	
+	
+	if element.__len__() == 0:
+		if element.tag.endswith('TaxonOccurrence'):
+			output_list.append(element)
+			return output_list
+	elif element.__len__() > 0:
+		if element.tag.endswith('TaxonOccurrence'):
+			output_list.append(element)
+			return output_list
+		else:
+			for subelement in element.getchildren():
+				#print_subelements(subelement)
+				output_list = extract_occurrence_elements(subelement, output_list)
+				return output_list
+		
+		return ('Error: no output_list of XML elements returned')
+
+
+
+
+
+def get_all_records_by_increment(params, inc, prefix_fn):
+	"""
+	Download all of the records in stages, store in list of elements.
+	Increments of e.g. 100 to not overload server
+	"""
+	print ''
+	print "Running get_all_records_by_increment(params, inc)"
+	
+	numhits = get_numhits(params)
+	print "#hits = ", numhits
+	
+	#list_of_records_as_elements = []
+	
+	
+	# download them by increment
+	
+	list_of_chunks = range(0, numhits-1, inc)
+	
+	outfn_list = []
+	for index, startindex in enumerate(list_of_chunks):
+	
+		if startindex + inc - 1 > numhits:
+			print "Downloading records# ", startindex, numhits
+		else:
+			print "Downloading records# ", startindex, startindex+inc-1
+		params['startindex'] = str(startindex)
+		params['maxresults'] = str(inc)
+
+		fn = prefix_fn + str(index+1) + '.xml'
+		outfn_list.append(fn)
+		# URL for the count utility
+		# instructions: http://data.gbif.org/ws/rest/occurrence
+		url = 'http://data.gbif.org/ws/rest/occurrence/list'
+		
+		results_handle = access_gbif(url, params)
+	
+		xmlstring = results_handle.read()
+	
+		# Save to a tempfile
+		fh = open(fn, 'w')
+		fh.write(xmlstring)
+		fh.close()
+		
+		results_handle.close()
+		
+		"""
+		xmltree = get_xml_hits(params)
+		
+		for element in xmltree.getroot():
+			output_list = extract_occurrence_elements(element, output_list)
+			list_of_records_as_elements.extend(output_list)
+		"""
+		
+	return outfn_list
+
+
+def get_record(key):
+	"""
+	Get a single record, return xmltree for it.
+	"""
+	
+	print ''
+	print 'Running get_record(params)...'
+
+	# URL for the record utility
+	# instructions: http://data.gbif.org/ws/rest/occurrence
+	url = 'http://data.gbif.org/ws/rest/occurrence/get'
+
+	params = {'format': 'darwin', 'key' : key}
+
+	cmd = url + paramsdict_to_string(params)
+	results_handle = access_gbif(url, params)
+	
+	xmlstring = results_handle.read()
+	xmltree = xmlstring_to_xmltree(xmlstring)
+	print_xmltree(xmltree)
+	
+	return xmltree
+
 
 
 
@@ -473,7 +691,9 @@ def extract_numhits(element):
 
 def xmlstring_to_xmltree(xmlstring):
 	"""
-	Take the text string returned by GBIF and parse to an XML tree using ElementTree.  Requires the intermediate step of saving to a temporary file (required to make ElementTree.parse work, apparently)
+	Take the text string returned by GBIF and parse to an XML tree using ElementTree.  
+	Requires the intermediate step of saving to a temporary file (required to make
+	ElementTree.parse work, apparently)
 	"""
 	tempfn = 'tempxml.xml'
 	fh = open(tempfn, 'w')
@@ -500,38 +720,360 @@ def xmlstring_to_xmltree(xmlstring):
 	
 
 def print_xmltree(xmltree):
-	
+	"""
+	Prints all the elements & subelements of the xmltree to screen (may require 
+	fix_ASCII to input file to succeed)
+	"""
 	for element in xmltree.getroot():
 		print element
 		print_subelements(element)
 
 
+def read_ultrametric_Newick(newickstr):
+	"""
+	Read a Newick file into a tree object (a series of node objects links to parent and daughter nodes), also reading node ages and node labels if any. 
+	"""
+	phylo_obj = lagrange_newick.parse(newickstr)
+	return phylo_obj
+
+
+def list_leaves(phylo_obj):
+	"""
+	Print out all of the leaves in above a node object
+	"""
+	for leaf in phylo_obj.leaves():
+		print leaf.label
+	return len(phylo_obj.leaves())
+
+
+def treelength(node):
+	"""
+	Gets the total branchlength above a given node by recursively adding through tree.
+	"""
+	PD = 0
+	PD = addup_PD(node, PD)
+	
+	return PD
+	
+
+def phylodistance(node1, node2):
+	"""
+	Get the phylogenetic distance (branch length) between two nodes.
+	"""
+	
+	anc_list = []
+	anc_list1 = get_ancestors_list(node1, anc_list)
+
+	anc_list = []
+	anc_list2 = get_ancestors_list(node2, anc_list)
+	
+	mrca = find_1st_match(anc_list1, anc_list2)
+	
+	print ""
+	print "Most recent common ancestor of ", node1, node2, " is:", mrca
+
+
+	print ""
+	print "PD between ", node1, "and", node2, " is:"
+	
+	PD = 0
+	PD1 = get_PD_to_mrca(node1, mrca, PD)
+	print PD1
+
+	PD = 0
+	PD2 = get_PD_to_mrca(node2, mrca, PD)
+	print PD2
+	
+	PD = PD1 + PD2
+	#print "Total =", PD
+	return PD
+
+
+def get_distance_matrix(phylo_obj):
+	"""
+	Get a matrix of all of the pairwise distances between the tips of a tree. 
+	"""
+	
+	# Get the array of mrcas between leaves
+	mrca_array = get_mrca_array(phylo_obj)
+	
+	leaves = phylo_obj.leaves()
+	
+	# Get the PD between leaves for each pair
+	nleaves = len(leaves)
+	dist_array = make_None_list_array(nleaves, nleaves)
+	
+	for index1 in range(0, nleaves):
+		temp_array = [None] * nleaves
+		for index2 in range(index1, nleaves):
+			mrca = mrca_array[index1][index2]
+			if mrca == None:
+				continue
+			else:
+				PD = 0
+				PD1 = get_PD_to_mrca(leaves[index1], mrca, PD)
+				PD2 = get_PD_to_mrca(leaves[index2], mrca, PD)
+				PD = PD1 + PD2
+				#print "Total =", PD
+				
+				temp_array[index2] = PD
+		dist_array[index1] = temp_array
+
+	return dist_array
+
+
+def get_mrca_array(phylo_obj):
+	"""
+	Get a square list of lists (array) listing the mrca of each pair of leaves
+	(half-diagonal matrix)
+	"""
+	
+	nleaves = len(phylo_obj.leaves())
+	
+	# Create empty array
+	mrca_array = make_None_list_array(nleaves, nleaves)
+	#print mrca_array
+
+
+	# Get the ancestor lists for each leaf
+	list_anc_lists = []
+	for leaf in phylo_obj.leaves():
+		anc_list = []
+		anc_list = get_ancestors_list(leaf, anc_list)
+		list_anc_lists.append(anc_list)
+
+	
+	# Get the common ancestor node for each leaf pair
+	for index1 in range(0, nleaves):
+		temp_array = [None] * nleaves
+		for index2 in range(index1, nleaves):
+			#print index1, index2
+			#x=find_1st_match(list_anc_lists[index1], list_anc_lists[index2])
+			#print x
+			temp_array[index2] = find_1st_match(list_anc_lists[index1], 			list_anc_lists[index2])
+		mrca_array[index1] = temp_array
+	return mrca_array
+
+
+
+def subset_tree(phylo_obj, list_to_keep):
+	"""
+	Given a list of tips and a tree, remove all other tips and resulting redundant nodes to produce a new smaller tree.
+	"""
+	
+	result = phylo_obj.subtree_mapping(list_to_keep)
+	temproot = result['newroot']
+	
+	temproot2 = prune_single_desc_nodes(temproot)
+	
+	newroot = find_new_root(temproot2)
+	
+	
+	return newroot
+	
+
+
+def prune_single_desc_nodes(node):
+	"""
+	Follow a tree from the bottom up, pruning any nodes with only one descendent
+	"""
+	if node.nchildren == 1:
+		child = node.children[0]
+		grandchildren = child.children
+		if child.nchildren == 0:
+			print "This shouldn't happen"
+			pass
+		elif child.nchildren > 0:
+			node.children = child.children
+			node.nchildren = len(node.children)
+			node.data = child.data.update(node.data)
+			node.istip = child.istip
+			node.label = str(node.label) + ';' + str(child.label)
+			node.length = node.length + child.length
+			node.excluded_dists = node.excluded_dists.extend(child.excluded_dists)
+			
+			for grandchild in grandchildren:
+				grandchild.parent = node
+				prune_single_desc_nodes(grandchild)
+				
+	elif node.nchildren > 1:
+		for child in node.children:
+			prune_single_desc_nodes(child)
+	else:
+		# No children, node tip
+		pass
+	
+	return node
+	
+
+def find_new_root(node):
+	"""
+	Search up tree from root and make new root at first divergence
+	"""
+	if node.nchildren == 1:
+		root_node = node.children[0]
+		newroot = find_new_root(root_node)
+		return newroot
+	elif node.nchildren > 1:
+		node.isroot = True
+		return node
+	else:
+		return None
+
+def make_None_list_array(xdim, ydim):
+	"""
+	Make a list of lists ("array") with the specified dimensions
+	"""
+	
+	# Create empty array
+	temp_row_array = [None] * xdim
+	temp_cols_array = []
+	for i in range(0, ydim):
+		temp_cols_array.append(temp_row_array)
+	
+	return temp_cols_array
+	
+	
+	
+
+def get_PD_to_mrca(node, mrca, PD):
+	"""
+	Add up the phylogenetic distance from a node to the specified ancestor (mrca).  Find mrca with find_1st_match.
+	"""
+	
+	PD = node.length + PD 
+	if node.parent == mrca:
+		return PD
+	else:
+		PD = get_PD_to_mrca(node.parent, mrca, PD)
+		return PD
+
+
+def find_1st_match(list1, list2):
+	"""
+	Find the first match in two ordered lists.
+	"""
+	anc_list1 = list1
+	anc_list2 = list2
+	
+	for anc1 in anc_list1:
+		for anc2 in anc_list2:
+			if anc1==anc2:
+				return(anc1)
+	
+	return None
+	
+
+def get_ancestors_list(node, anc_list):
+	"""
+	Get the list of ancestors of a given node
+	"""
+	if node.parent is not None:
+		anc_list.append(node.parent)
+		get_ancestors_list(node.parent, anc_list)
+	
+	return anc_list
+	
+
+
+def addup_PD(node, PD):
+	"""
+	Adds the branchlength of the current node to the total PD measure.
+	"""
+	PD = PD + node.length
+	#print "PD =", str(PD)
+	
+	if node.nchildren > 0:
+		for child in node.children:
+			PD = addup_PD(child, PD)
+	
+	return(PD)
+	
+	
+def print_tree_outline_format(phylo_obj):
+	"""
+	Prints the tree out in "outline" format (daughter clades are indented, etc.)
+	"""
+	
+	print ""
+	print "Printing out tree of", str(len(phylo_obj.leaves())), "taxa, hierarchical indented format."
+	print ""
+	
+	node = phylo_obj
+	rank = 1
+	print_Node(node, rank)
+	
+	return
+
+
+
+def print_Node(node, rank):
+	"""
+	Prints the node in question, and recursively all daughter nodes, maintaining rank as it goes.
+	"""
+	
+	tabstr = ""
+	for count in range(1,rank):
+		tabstr = tabstr + "	"
+	
+	printstr = ''.join(["Rank #", str(rank), ", label=", str(node.label), ", brlen=", str(node.length)])
+	
+	printstr2 = tabstr + printstr
+	
+	print printstr2
+	
+	if node.nchildren > 0:
+		rank = rank + 1
+		for child in node.children:
+			print_Node(child, rank)
+
+
+
+def lagrange_disclaimer():
+	"""
+	Just prints lagrange citation etc. in code using lagrange libraries.
+	"""
+	txt = """Note: This code uses libraries from the lagrange package:
+	
+	http://code.google.com/p/lagrange/"
+	
+	Lagrange is a Python package implementing likelihood models for geographic range evolution on phylogenetic trees, with methods for inferring rates of dispersal and local extinction and ancestral ranges.
+	
+	This software implements methods described in Ree, R H and S A Smith. 2008. Maximum likelihood inference of geographic range evolution by dispersal, local extinction, and cladogenesis. Systematic Biology 57(1):4-14.
+	
+	GNU General Public License v2
+	"""
+	
+	print txt
+	return
 
 
 def unescape(text):
-##
-# Removes HTML or XML character references and entities from a text string.
-#
-# @param text The HTML (or XML) source text.
-# @return The plain text, as a Unicode string, if necessary.
-# source: http://effbot.org/zone/re-sub.htm#unescape-html
-    def fixup(m):
-        text = m.group(0)
-        if text[:2] == "&#":
-            # character reference
-            try:
-                if text[:3] == "&#x":
-                    return unichr(int(text[3:-1], 16))
-                else:
-                    return unichr(int(text[2:-1]))
-            except ValueError:
-                pass
-        else:
-            # named entity
-            try:
-                text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
-            except KeyError:
-                pass
-        return text # leave as is
-    return re.sub("&#?\w+;", fixup, text)
+	"""
+	##
+	# Removes HTML or XML character references and entities from a text string.
+	#
+	# @param text The HTML (or XML) source text.
+	# @return The plain text, as a Unicode string, if necessary.
+	# source: http://effbot.org/zone/re-sub.htm#unescape-html
+	"""
+	def fixup(m):
+		text = m.group(0)
+		if text[:2] == "&#":
+			# character reference
+			try:
+				if text[:3] == "&#x":
+					return unichr(int(text[3:-1], 16))
+				else:
+					return unichr(int(text[2:-1]))
+			except ValueError:
+				pass
+		else:
+			# named entity
+			try:
+				text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
+			except KeyError:
+				pass
+		return text # leave as is
+	return re.sub("&#?\w+;", fixup, text)
 	

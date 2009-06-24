@@ -55,10 +55,11 @@ print ""
 print "2. Point-in-polygon operation."
 
 # Set up polygon
-ul = (-80, 80)
-ur = (0, 80)
-ll = (-80, 40)
-lr = (0, 40)
+# (long, lat) = x, y
+ul = (14, 58)
+ur = (15, 58)
+ll = (14, 57)
+lr = (15, 57)
 poly = [ul, ur, ll, lr]
 
 outfilename = 'latlongs.txt'

@@ -1,5 +1,8 @@
-# Source: 
-# http://code.google.com/p/primary-maps-2008/source/browse/trunk/shpUtils.py
+# Original source is apparently:
+# http://code.activestate.com/recipes/362715/
+# 
+# ...but got via here:
+# http://indiemaps.com/blog/2008/03/easy-shapefile-loading-in-python/
 
 from struct import unpack
 import dbfUtils, math
