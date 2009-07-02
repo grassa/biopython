@@ -200,6 +200,8 @@ def tablefile_points_in_poly(fh, ycol, xcol, namecol, poly):
 
 
 
+
+
 def print_subelements(element):
 	"""
 	Takes an element from an XML tree and prints the subelements tag & text, and
@@ -717,7 +719,236 @@ def xmlstring_to_xmltree(xmlstring):
 
 	return xmltree
 
+
+
+def element_items_to_string(items):
+	"""
+	Input a list of items, get string back
+	"""
+	s = ""
+	for item in items:
+		s = s + " " + str(item)
+		s = s.strip()
 	
+	return s
+
+def element_text_to_string(txt):
+	if txt == None:
+		txt = ""
+	return str(txt).strip()
+
+
+
+def get_str_subset(start, end, seq):
+	
+	index1 = start-1
+	index2 = end
+	
+	newstring = str()
+	
+	for i in range(index1, index2):
+		newstring = newstring + seq[i]
+	
+	#print 'len(newstring)=', str(len(newstring))
+	#print 'start - stop', str(end - start + 1) 
+	
+	return newstring
+
+
+
+def find_to_elements_w_ancs(xmltree, el_tag, anc_el_tag):
+	"""
+	Burrow into XML to get an element with tag el_tag, return only those el_tags underneath a particular parent element parent_el_tag
+	"""
+	
+	match_el_list = []
+
+	for element in xmltree.getroot():
+		
+		match_el_list = xml_recursive_search_w_anc(xmltree, element, el_tag, anc_el_tag, match_el_list)
+	
+	
+	# How many different ancs found?
+	list_ancs = []
+	for tupitem in match_el_list:
+		list_ancs.append(tupitem[0])
+	
+	unique_ancs = unique(list_ancs)
+	print unique_ancs
+	
+	print ""
+	print "Number of elements found: " + str(len(list_ancs)) + " in " + str(len(unique_ancs)) + " XML 'ancestor' (higher group) categories."
+	
+	for unique_anc in unique_ancs:
+		print ""
+		print "Anc: " + str(unique_anc)
+		for tupitem in match_el_list:
+			if tupitem[0] == unique_anc:
+				print "	el: " + str(tupitem[1])
+	
+	return match_el_list
+
+
+
+def create_sub_xmltree(element):
+	"""
+	Create a subset xmltree (to avoid going back to irrelevant parents)
+	"""
+	
+	xmltree = ET.ElementTree(element)
+	
+	return xmltree
+
+
+
+
+def xml_recursive_search_w_anc(xmltree, element, el_tag, anc_el_tag, match_el_list):
+	"""
+	Recursively burrows down to find whatever elements with el_tag exist inside a parent_el_tag.
+	"""
+	
+	
+	# If the element matches the tag you are looking for...
+	if element.tag == el_tag:
+
+		# Then check if the ancestor matches
+		found_anc = None
+		ancestor = xml_burrow_up(xmltree, element, anc_el_tag, found_anc)
+		
+		if ancestor == None:
+			pass
+		else:
+			if ancestor.tag == anc_el_tag:
+				match_el = element
+				match_el_list.append((ancestor, match_el))
+
+	else:
+		for child in element.getchildren():
+			match_el_list = xml_recursive_search_w_anc(xmltree, child, el_tag, anc_el_tag, match_el_list)
+			
+	return match_el_list
+		
+		
+
+def xml_burrow_up(xmltree, element, anc_el_tag, found_anc):
+	"""
+	Burrow up xml to find anc_el_tag
+	"""
+	
+	if found_anc == None:
+		# Just get the direct parent of child_to_search_for
+		child_to_search_for = element
+		parent_element = return_parent_in_xmltree(xmltree, child_to_search_for)
+		
+		if parent_element == None:
+			return found_anc
+		
+		# Does the parent match the searched-for ancestor?		
+		if parent_element.tag == anc_el_tag:
+			found_anc = parent_element
+		else:
+			# Move a level up and search again, return if found
+
+			found_anc = xml_burrow_up(xmltree, parent_element, anc_el_tag, found_anc)
+
+		return found_anc
+		
+	else:
+		return found_anc
+		
+
+
+def xml_burrow_up_cousin(xmltree, element, cousin_el_tag, found_cousin):
+	"""
+	Burrow up from element of interest, until a cousin is found with cousin_el_tag
+	"""
+	
+	if found_cousin == None:
+		# Just get the direct parent of child_to_search_for
+		child_to_search_for = element
+		parent_element = return_parent_in_xmltree(xmltree, child_to_search_for)
+		
+		if parent_element == None:
+			return found_cousin
+		
+		grandparent_element = return_parent_in_xmltree(xmltree, parent_element)
+		if grandparent_element == None:
+			return found_cousin
+		
+		# Does the parent or any cousins match the searched-for ancestor?		
+		for aunt in grandparent_element.getchildren():
+			if aunt.tag == cousin_el_tag:
+				found_cousin = aunt
+				return found_cousin
+		
+		if found_cousin == None:
+			# Move a level up and search again, return if found
+			found_cousin = xml_burrow_up_cousin(xmltree, parent_element, cousin_el_tag, found_cousin)
+
+		return found_cousin
+		
+	else:
+		return found_cousin
+	
+
+
+def return_parent_in_xmltree(xmltree, child_to_search_for):
+	"""
+	Search through an xmltree to get the parent of child_to_search_for
+	"""
+	
+	returned_parent = None
+	for element in xmltree.getroot():
+		
+		potential_parent = element
+		
+		returned_parent = return_parent_in_element(potential_parent, child_to_search_for, returned_parent)
+		
+		return returned_parent
+		
+				
+	
+def return_parent_in_element(potential_parent, child_to_search_for, returned_parent):
+	"""
+	Search through an XML element to return parent of child_to_search_for
+	"""
+	
+	if returned_parent == None:
+		children = potential_parent.getchildren()
+		if len(children) > 0:
+			for child in potential_parent.getchildren():
+				if child == child_to_search_for:
+					returned_parent = potential_parent
+	
+				# If not found at this level, go down a level
+				else:
+					returned_parent = return_parent_in_element(child, child_to_search_for, returned_parent)
+						
+		return returned_parent
+	else:
+		return returned_parent
+		
+
+def find_1st_matching_element(element, el_tag, return_element):
+	"""
+	Burrow down into the XML tree, retrieve the first element with the matching tag
+	"""
+	if return_element == None:
+		if element.tag == el_tag:
+			return_element = element
+		else:
+			children = element.getchildren()
+			if len(children) > 0:
+				for child in children:
+					return_element = find_1st_matching_element(child, el_tag, return_element)
+		return return_element	
+	else:
+		return return_element
+	
+
+
+
+
 
 def print_xmltree(xmltree):
 	"""
