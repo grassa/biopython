@@ -414,11 +414,9 @@ def paramsdict_to_string(params):
 	# Converts the python dictionary of search parameters into a text 
 	# string for submission to GBIF
 	"""
-	
 	temp_outstring_list = []
 	for key in params.keys():
 		temp_outstring_list.append(key + '=' + params[key])
-		
 	outstring = '&'.join(temp_outstring_list)
 	return outstring
 
@@ -611,8 +609,20 @@ def get_record(key):
 	cmd = url + paramsdict_to_string(params)
 	results_handle = access_gbif(url, params)
 	
+	print results_handle.read()
 	xmlstring = results_handle.read()
-	xmltree = xmlstring_to_xmltree(xmlstring)
+	
+	# Save to a tempfile
+	fn_unfixed ='tempxml_unfixed2.xml'
+	fh = open(fn_unfixed, 'w')
+	fh.write(xmlstring)
+	fh.close()
+
+	fn = fix_ASCII(fn_unfixed)
+
+	xmlstring2 = open(fn, 'r')
+	
+	xmltree = xmlstring_to_xmltree(xmlstring2)
 	print_xmltree(xmltree)
 	
 	return xmltree
