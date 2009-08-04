@@ -209,7 +209,7 @@ class TreeSum:
 		print ''
 		print 'Calculating MPD'
 		print 'original mpd:', self.mpd
-		mpd = self.mean_phylo_dist()
+		mpd = self.mean_phylo_dist(sample_ifbig = True)
 		print 'Calculated MPD:', self.mpd
 		nri = self.calc_nri()
 		print 'Calculating NRI:'
@@ -223,7 +223,7 @@ class TreeSum:
 		print ''
 		print 'Calculating MNPD'
 		print 'original mnpd:', self.mnpd
-		mnpd = self.mean_nn_dist()
+		mnpd = self.mean_nn_dist(sample_ifbig = True)
 		print 'Calculated MNPD:', self.mnpd
 		print 'Calculating NTI:'
 		nti = self.calc_nti()
@@ -249,6 +249,15 @@ class TreeSum:
 		
 		phylo_obj = self.treeobj	
 		leaves = phylo_obj.get_terminals()
+		
+		numleaves = len(leaves)
+		numdists = (numleaves^2) / 2 - numleaves/2
+		if numdists > 1000:
+			print "Number of leaves in tree =", numleaves
+			print "Number of distances to calculate =", numdists
+
+			print "This could be slow (minutes for >100 taxa), recommend you use the phylocom package (phydist command) to calculate the matrix efficiently)."
+
 		
 		# Get the PD between leaves for each pair
 		nleaves = len(leaves)
@@ -338,7 +347,8 @@ class TreeSum:
 				# Then we're going to sample the distance matrix instead
 				print "Note: Taking 100 sample pairs of distance matrix instead of calculating all " +  str(numleaves * numleaves) + " pairwise distances."
 				
-				# 100 samples should
+				# 100 samples should do it
+				# Sample distances directly off the tree, not the distance matrix
 				numsamps = 100
 				randdist_list = self.sample_distances(numsamps)
 				
@@ -360,6 +370,41 @@ class TreeSum:
 		mask = isnan(self.half_distance_matrix) ==  False
 		self.mpd = average(self.half_distance_matrix[mask])
 		return self.mpd
+
+
+	def mean_nn_dist(self, sample_ifbig = False):
+		"""
+		Calculates the Mean Nearest Neighbor Phylogenetic Distance (MNPD) for the tree.  If the tree is huge, we could just sample the distances instead of doing the entire distance matrix.
+		"""
+
+		if sample_ifbig == True:
+			numleaves = len(self.treeobj.get_terminals())
+			if numleaves * numleaves > 1000:
+				# Then we're going to sample the distance matrix instead
+				print "Note: Taking 100 sample pairs of distance matrix instead of calculating all " +  str(numleaves * numleaves) + " pairwise distances."
+				
+				# 100 samples should do it
+				# Sample distances directly off the tree, not the distance matrix
+				numsamps = 100
+				randdist_list = self.sample_min_distances(numsamps)
+				
+				self.mnpd = average(randdist_list)
+				return self.mnpd
+		
+		# Otherwise, do it the standard way
+		
+		# Generate distance matrix if it doesn't exist
+		if self.half_distance_matrix == None:
+			self.get_half_distance_matrix()
+		
+		# axis 0 = vertical, axis 1 = horizontal
+		row_min_pds_list = nanmin(self.half_distance_matrix, 0)
+		
+		self.mnpd = average(row_min_pds_list[isfinite(row_min_pds_list)])
+		return self.mnpd
+
+
+
 
 	
 	def sample_distances(self, numsamps):
@@ -416,37 +461,6 @@ class TreeSum:
 		return randdist_list
 
 		
-	def mean_nn_dist(self, sample_ifbig = False):
-		"""
-		Calculates the Mean Nearest Neighbor Phylogenetic Distance (MNPD) for the tree.  If the tree is huge, we could just sample the distances instead of doing the entire distance matrix.
-		"""
-
-		if sample_ifbig == True:
-			numleaves = len(self.treeobj.get_terminals())
-			if numleaves * numleaves > 1000:
-				# Then we're going to sample the distance matrix instead
-				print "Note: Taking 100 sample pairs of distance matrix instead of calculating all " +  str(numleaves * numleaves) + " pairwise distances."
-				
-				# 100 samples should
-				numsamps = 100
-				randdist_list = self.sample_min_distances(numsamps)
-				
-				self.mnpd = average(randdist_list)
-				return self.mnpd
-		
-		# Otherwise, do it the standard way
-		
-		# Generate distance matrix if it doesn't exist
-		if self.half_distance_matrix == None:
-			self.get_half_distance_matrix()
-		
-		# axis 0 = vertical, axis 1 = horizontal
-		row_min_pds_list = nanmin(self.half_distance_matrix, 0)
-		
-		self.mnpd = average(row_min_pds_list[isfinite(row_min_pds_list)])
-		return self.mnpd
-
-
 	def randomize_leaves(self):
 		"""
 		Make a new tree that randomizes leaf positions. (For generation of a null model to generate standardized Net Related Index (NRI, standardized Mean Phylogenetic Distance) and Nearest Taxon Index (NTI, standardized Mean Minimum Phylogenetic Distance).
@@ -502,7 +516,7 @@ class TreeSum:
 			#print rand_subtree.get_terminals()
 			rand_ts = TreeSum(rand_subtree)
 
-			null_mpds_list[i] = rand_ts.mean_phylo_dist()
+			null_mpds_list[i] = rand_ts.mean_phylo_dist(sample_ifbig = True)
 		
 	
 		self.mean_null_mpd = average(null_mpds_list)
@@ -542,7 +556,7 @@ class TreeSum:
 			#print rand_subtree.get_terminals()
 			rand_ts = TreeSum(rand_subtree)
 
-			null_mnpds_list[i] = rand_ts.mean_nn_dist()
+			null_mnpds_list[i] = rand_ts.mean_nn_dist(sample_ifbig = True)
 		
 	
 		self.mean_null_mnpd = average(null_mnpds_list)

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 import os
-from gbif_xml import GbifXml
+from gbif_xml import GbifXml, ObsRecs
 from handyfunctions import fix_ASCII_file
 
 
@@ -47,9 +47,7 @@ except Exception, inst:
 
 
 # Store results in an object of Class GbifXml:
-gbifobj = GbifXml(xmltree)
-
-
+gbif_recs_xmltree = GbifXml(xmltree)
 
 
 
@@ -57,34 +55,62 @@ gbifobj = GbifXml(xmltree)
 # Testing print_xmltree
 # ======================
 # Print the object:
-#  (also uses gbifobj.print_sublelements)
+#  (also uses gbif_recs_xmltree.print_sublelements)
 
-"""
 print ''
 print 'Printing the GBIF object xmltree with print_xmltree...'
-gbifobj.print_xmltree()
-"""
-
+#gbif_recs_xmltree.print_xmltree()
 
 
 
 # ======================
-# Testing element_items_to_dictionary
+# Testing extract_latlongs
 # ======================
-"""
-items = gbifobj.root.items()
-items_dict = gbifobj.element_items_to_dictionary(items)
-print ''
-print 'Printing element_items_to_dictionary(items)...'
-print items_dict
-"""
+# Initiate ObsRecs object, containing gbif_recs_xmltree
+recs = ObsRecs(gbif_recs_xmltree)
 
-
-# ======================
-# Testing extract_latlong
-# ======================
-
-outstr = gbifobj.extract_latlongs(gbifobj.root)
-
+outstr = recs.gbif_recs_xmltree.extract_latlongs(gbif_recs_xmltree.root)
 print outstr
+
+# Make recs object hold all of the observation records
+recs.latlongs_to_obj()
+
+print ''
+print "Printing first five record objects..."
+print recs.obs_recs_list[0:4], '...'
+
+
+
+# ========================
+# Testing get_hits()
+# ========================
+params = {'format': 'darwin', 'scientificname': 'Utricularia', 'maxresults' : str(100)}
+
+recs.get_xml_hits(params)
+recs.gbif_recs_xmltree.print_xmltree()
+
+
+# ========================
+# Testing get_numhits()
+# ========================
+recs.get_numhits(params)
+
+
+# ========================
+# Testing get_record
+# ========================
+key = 175067484
+xmlrec = recs.get_record(key)
+print xmlrec
+
+# ========================
+# Testing getting records by increment
+# ========================
+inc = 400
+x = recs.get_all_records_by_increment(params, inc)
+print x
+
+# ========================
+# ========================
+
 

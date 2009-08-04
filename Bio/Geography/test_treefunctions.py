@@ -19,7 +19,7 @@ tree_str = '(((((((((((((((((Sambucus:43.136024,Viburnum:43.136040)Adoxaceae:53.
 tree_obj = Tree(tree_str)
 
 print tree_obj
-
+bigtree_ts = TreeSum(tree_obj)
 
 
 
@@ -107,3 +107,5 @@ ts_newtree.parent_tree = ts.treeobj
 ts_newtree.test_tree()
 
 
+# This could be slow
+#bigtree_ts.test_tree()

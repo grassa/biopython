@@ -153,6 +153,12 @@ def fix_ASCII_file(fn_unfixed):
 
 
 def fix_ASCII(lines):
+	"""
+	Convert each line in an input string into pure ASCII
+	(This avoids crashes when printing to screen, etc.)
+	"""
+	
+	newstr_list = []
 	for line in lines:
 		
 		# library from here: http://effbot.org/zone/re-sub.htm#unescape-html
@@ -167,9 +173,9 @@ def fix_ASCII(lines):
 		
 		# Fix the ampersand
 		ascii_content = fix_ampersand(ascii_content3)
-		line = ascii_content
+		newstr_list.append(ascii_content + '\n')
 
-	return lines
+	return ''.join(newstr_list)
 
 
 
