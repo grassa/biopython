@@ -609,7 +609,7 @@ def get_record(key):
 	cmd = url + paramsdict_to_string(params)
 	results_handle = access_gbif(url, params)
 	
-	print results_handle.read()
+	#print results_handle.read()
 	xmlstring = results_handle.read()
 	
 	# Save to a tempfile
@@ -620,7 +620,13 @@ def get_record(key):
 
 	fn = fix_ASCII(fn_unfixed)
 
-	xmlstring2 = open(fn, 'r')
+	fh = open(fn, 'r')
+	xmlstring2 = fh.read()
+	fh.close()
+	
+	print ''
+	print 'xmlstring2'
+	print xmlstring2
 	
 	xmltree = xmlstring_to_xmltree(xmlstring2)
 	print_xmltree(xmltree)

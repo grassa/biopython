@@ -1,6 +1,6 @@
 #!/usr/bin/python
 import os
-from gbif_xml import GbifXml, ObsRecs
+from gbif_xml import GbifXmlTree, GbifSearchResults
 from handyfunctions import fix_ASCII_file
 
 
@@ -46,8 +46,8 @@ except Exception, inst:
 	print "Unexpected error opening %s: %s" % (xml_fn, inst)
 
 
-# Store results in an object of Class GbifXml:
-gbif_recs_xmltree = GbifXml(xmltree)
+# Store results in an object of Class GbifXmlTree:
+gbif_recs_xmltree = GbifXmlTree(xmltree)
 
 
 
@@ -66,8 +66,8 @@ print 'Printing the GBIF object xmltree with print_xmltree...'
 # ======================
 # Testing extract_latlongs
 # ======================
-# Initiate ObsRecs object, containing gbif_recs_xmltree
-recs = ObsRecs(gbif_recs_xmltree)
+# Initiate GbifSearchResults object, containing gbif_recs_xmltree
+recs = GbifSearchResults(gbif_recs_xmltree)
 
 outstr = recs.gbif_recs_xmltree.extract_latlongs(gbif_recs_xmltree.root)
 print outstr
@@ -95,7 +95,6 @@ recs.gbif_recs_xmltree.print_xmltree()
 # ========================
 recs.get_numhits(params)
 
-
 # ========================
 # Testing get_record
 # ========================
@@ -108,9 +107,23 @@ print xmlrec
 # ========================
 inc = 400
 x = recs.get_all_records_by_increment(params, inc)
-print x
+
+start_element = recs.gbif_recs_xmltree.root
+el_to_match = 'TaxonOccurrence'
+x = recs.gbif_recs_xmltree.extract_all_matching_elements(start_element, el_to_match)
+
 
 # ========================
+# Print records to screen
 # ========================
+recs.print_records()
+
+# ========================
+# Print records to file
+# ========================
+fn = 'recs_table.txt'
+recs.print_records_to_file(fn)
+os.system('head ' + fn)
+
 
 

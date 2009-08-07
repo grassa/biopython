@@ -6,7 +6,7 @@ Functions for accessing GBIF, downloading records, processing them into a class,
 #
 # Import using:
 # import gbif_xml
-# g = gbif_xml.GbifXml(xmltree)
+# g = gbif_xml.GbifXmlTree(xmltree)
 # g.print_xmltree()
 
 # Based on here:
@@ -41,43 +41,46 @@ from Bio import File
 
 
 
-class ObsRec(Exception): pass
+class GbifObservationRecord(Exception): pass
 
-class ObsRec():
-	"""ObsRec is a class for holding an individual observation at an individual lat/long point."""
+class GbifObservationRecord():
+	"""GbifObservationRecord is a class for holding an individual observation at an individual lat/long point."""
 	
 	# Info prints out the informative description of this class, if a user wants to see it.
-	#info = "Information about this class: ObsRec is a class for holding an individual observation at an individual lat/long point."
+	#info = "Information about this class: GbifObservationRecord is a class for holding an individual observation at an individual lat/long point."
 	
 	
 	def __init__(self):
 		"""
 		This is an instantiation class for setting up new objects of this class.
 		"""
-		
+		self.gbifkey = None
+		self.catalognum = None
+		self.country = None
 		self.lat = None
 		self.long = None
+		self.earlydate = None
+		self.taxonconceptkey = None
 		self.taxon = None
 		self.genus = None
 		self.species = None
-		
-		self.key = None
-		self.date = None
+		self.scientific = None
+		self.latedate = None
 		
 	
 	def latlong_to_obj(self, line):
 		"""
-		Read in a string, read species/lat/long to ObsRec object
+		Read in a string, read species/lat/long to GbifObservationRecord object
 		# This can be slow, e.g. 10 seconds for even just ~1000 records.
 		"""
 		print line
 		words = line.split("\t")
 		numwords = len(words)
-		self.key = int(words[0])
+		self.gbifkey = int(words[0])
 		self.lat = float(words[1])
 		self.long = float(words[2])
 		self.taxon = str(words[3])
-		self.date = str(words[4])
+		self.latedate = str(words[4])
 		
 		temptaxon_words = self.taxon.split()
 		if len(temptaxon_words) == 2:
@@ -89,22 +92,113 @@ class ObsRec():
 		
 		return
 
+	def parse_occurrence_element(self, element):
+		"""
+		Parse a TaxonOccurrence element, store in OccurrenceRecord
+		"""
+		
+		# Get the GBIF record key for the occurrence
+		try:
+			self.gbifkey = element.attrib['gbifKey']
+		except:
+			pass
+		
+		# Get the catalog number
+		self.fill_occ_attribute(element, 'catalogNumber')
+		self.catalognum = self.fill_occ_attribute(element, 'catalogNumber', 'str')
+		self.country = self.fill_occ_attribute(element, 'country', 'str')
+		self.lat = self.fill_occ_attribute(element, 'decimalLatitude', 'float')
+		self.long = self.fill_occ_attribute(element, 'decimalLongitude', 'float')
+		self.earlydate = self.fill_occ_attribute(element, 'earliestDateCollected', 'str')
+		
+		try:
+			matching_subel = self.find_1st_matching_subelement(element, 'TaxonConcept', None)
+			if matching_subel is not None:
+				self.taxonconceptkey = matching_subel.attrib['gbifKey']
+		except:
+			pass
+			
+		self.taxon = self.fill_occ_attribute(element, 'nameComplete', 'str')
+		self.genus = self.fill_occ_attribute(element, 'genusPart', 'str')
+		self.species = self.fill_occ_attribute(element, 'specificEpithet', 'str')
+		self.scientific = self.fill_occ_attribute(element, 'scientific', 'str')
+		self.latedate = self.fill_occ_attribute(element, 'latestDateCollected', 'str')
+		
+		return
+		
+
+	def fill_occ_attribute(self, element, el_tag, format='str'):
+		"""
+		Return the text found in matching element matching_el.text.
+		"""
+		return_element = None
+		matching_el = self.find_1st_matching_subelement(element, el_tag, return_element)
+		
+		if matching_el is not None:
+			try:
+				result = matching_el.text
+				if result == '':
+					return None
+				elif result == 'true':
+					return bool(True)
+				elif result == 'false':
+					return bool(False)
+				else:
+					return eval(format + '(' + result + ')')
+			except:
+				pass
+		else:
+			return None
+		return None
+		
+
+	def find_1st_matching_subelement(self, element, el_tag, return_element):
+		"""
+		Burrow down into the XML tree, retrieve the first element with the matching tag.
+		"""
+		if return_element == None:
+			if element.tag == el_tag:
+				return_element = element
+			else:
+				children = element.getchildren()
+				if len(children) > 0:
+					for child in children:
+						return_element = self.find_1st_matching_element(child, el_tag, return_element)
+			return return_element	
+		else:
+			return return_element
 
 
+	def record_to_string(self):
+		"""
+		Print the attributes of a record to a string
+		"""
+		
+		temp_attributes_list = [self.gbifkey, self.catalognum, self.country, self.lat, self.long, self.earlydate, self.taxonconceptkey, self.taxon, self.genus, self.species, self.scientific, self.latedate]
+		
+		str_attributes_list = []
+		for item in temp_attributes_list:
+			str_attributes_list.append(str(item))
+		
+		return_string = '\t'.join(str_attributes_list)
+		
+		return return_string
+		
 
+		
 
+		
 
+class GbifDarwincoreXmlString(Exception): pass
 
-class XmlString(Exception): pass
-
-class XmlString(str):
-	"""XmlString is a class for holding the xmlstring returned by a GBIF search, & processing it to plain text, then an xmltree (an ElementTree).
+class GbifDarwincoreXmlString(str):
+	"""GbifDarwincoreXmlString is a class for holding the xmlstring returned by a GBIF search, & processing it to plain text, then an xmltree (an ElementTree).
 	
-	XmlString inherits string methods from str (class String).
+	GbifDarwincoreXmlString inherits string methods from str (class String).
 	"""
 	
 	# Info prints out the informative description of this class, if a user wants to see it.
-	info = "Information about this class: XmlString is a class for holding the xmlstring returned by a GBIF search, & processing it to plain text, then an xmltree (an ElementTree)."
+	info = "Information about this class: GbifDarwincoreXmlString is a class for holding the xmlstring returned by a GBIF search, & processing it to plain text, then an xmltree (an ElementTree)."
 	
 
 	def __init__(self, rawstring=None):
@@ -196,9 +290,9 @@ class XmlString(str):
 	
 	
 
-class GbifXmlError(Exception): pass
+class GbifXmlTreeError(Exception): pass
 
-class GbifXml():
+class GbifXmlTree():
 	"""gbifxml is a class for holding and processing xmltrees of GBIF records."""
 	
 	# Info prints out the informative description of this class, if a user wants to see it.
@@ -218,7 +312,7 @@ class GbifXml():
 			self.xmltree = xmltree
 			self.root = xmltree.getroot()
 		else:
-			print "GbifXml.__init__(): No xmltree, so creating empty object."
+			print "GbifXmlTree.__init__(): No xmltree, so creating empty object."
 			self.xmltree = None
 			self.root = None
 	
@@ -340,35 +434,40 @@ class GbifXml():
 
 	
 	
-	def _extract_occurrence_elements(self, element, output_list):
+	def extract_all_matching_elements(self, start_element, el_to_match):
 		"""
 		Returns a list of the elements, picking elements by TaxonOccurrence; this should 
 		return a list of elements equal to the number of hits.
 		"""
 		
 		print ''
-		print 'Running extract_taxonoccurrencekeys_tolist(element, outfh)'
+		print 'Running extract_all_matching_elements(start_element, ' + el_to_match + ')'
 		
-		
+		output_list = []
+		self._recursive_el_match(start_element, el_to_match, output_list)
+
+		return output_list
+	
+
+	def _recursive_el_match(self, element, el_to_match, output_list):
+		"""
+		Search recursively through xmltree, starting with element, recording all instances of el_to_match.
+		"""
+		# Does the element match? If so, add to list
+		if element.tag.endswith(el_to_match):
+			output_list.append(element)
+
+		# If there are NO subelements, then return...
 		if element.__len__() == 0:
-			if element.tag.endswith('TaxonOccurrence'):
-				output_list.append(element)
-				return output_list
+			return output_list
+		# If there are some subelements, search them...
 		elif element.__len__() > 0:
-			if element.tag.endswith('TaxonOccurrence'):
-				output_list.append(element)
-				return output_list
-			else:
-				for subelement in element.getchildren():
-					#print_subelements(subelement)
-					output_list = self._extract_occurrence_elements(subelement, output_list)
-					return output_list
-			
-			return ('Error: no output_list of XML elements returned')
-	
-
-
-	
+			for subelement in element.getchildren():
+				output_list = self._recursive_el_match(subelement, el_to_match, output_list)
+			return output_list			
+		# If nothing is found ever, return the below
+		return ('Error: no output_list of XML elements returned')
+		
 	
 	
 	def find_to_elements_w_ancs(self, el_tag, anc_el_tag):
@@ -615,16 +714,15 @@ class GbifXml():
 
 
 	
-class ObsRecs(Exception): pass
+class GbifSearchResults(Exception): pass
 
-class ObsRecs():	
+class GbifSearchResults():	
 	"""
-	ObsRecs is a class for holding a series of ObsRec records, and processing them
-	e.g. into classified areas.
+	GbifSearchResults is a class for holding a series of GbifObservationRecord records, and processing them e.g. into classified areas.
 	"""
 	
 	# Info prints out the informative description of this class, if a user wants to see it.
-	info = "ObsRecs is a class for holding a series of ObsRec records, and processing them	e.g. into classified areas."
+	info = "GbifSearchResults is a class for holding a series of GbifObservationRecord records, and processing them	e.g. into classified areas."
 	
 	
 	def __init__(self, gbif_recs_xmltree=None):
@@ -637,18 +735,21 @@ class ObsRecs():
 		self.time_last_gbif_access = 0
 		self.email = None
 
-		# xmltree of GBIF records (GbifXml class)	
+		# xmltree of GBIF records (GbifXmlTree class)	
 		if gbif_recs_xmltree:
 			self.gbif_recs_xmltree = gbif_recs_xmltree
 		else:
-			self.gbif_recs_xmltree = GbifXml()
+			self.gbif_recs_xmltree = GbifXmlTree()
 		
+		# list of xmltrees returned by get_all_records_by_increment
+		self.gbif_xmltree_list = []
 		
 		# xmltree of GBIF count query
 		self.gbif_count_xmltree = None
 		
 		# String (tempfile-ish) list of records
-		# An XmlString object, with methods for cleaning the string
+		# An GbifDarwincoreXmlString object, with methods for cleaning the string
+		# This could a list if multiple downloads are required
 		self.obs_recs_xmlstring = None
 		self.count_recs_xmlstring = None
 		
@@ -657,14 +758,49 @@ class ObsRecs():
 		self.gbif_count_params = None
 		self.count_params_str = None
 		
-		# List of ObsRec objects
+		# List of GbifObservationRecord objects
 		self.obs_recs_list = []
+
+
+
+	def print_records(self):
+		"""
+		Print all records in tab-delimited format to screen.
+		"""
+		
+		for index, record in enumerate(self.obs_recs_list):
+			print_string = record.record_to_string()
+			print str(index+1) + '\t' + print_string
+		
+		return
+
+
+	def print_records_to_file(self, fn):
+		"""
+		Print the attributes of a record to a file with filename fn
+		"""
+		
+		# Open the file
+		fh = open(fn, 'w')
+		
+		for index, record in enumerate(self.obs_recs_list):
+			print_string = record.record_to_string()
+		
+			# Write to the file
+			fh.write(str(index+1) + '\t' + print_string + '\n')
+
+		# Close the file
+		fh.close()
+		
+		return fn
+
+
 
 
 	def latlongs_to_obj(self):
 		"""
 		Takes the string from extract_latlongs, puts each line into a
-		ObsRec object.
+		GbifObservationRecord object.
 		
 		Return a list of the objects
 		"""
@@ -684,7 +820,7 @@ class ObsRecs():
 					break
 		
 		for line in self.obs_recs_xmlstring.splitlines():
-			temprec = ObsRec()
+			temprec = GbifObservationRecord()
 			temprec.latlong_to_obj(line)
 			self.obs_recs_list.append(temprec)
 			#del temprec
@@ -735,9 +871,9 @@ class ObsRecs():
 		cmd = url + self._paramsdict_to_string(params)
 		results_handle = self.access_gbif(url, params)
 		
-		self.obs_recs_xmlstring = XmlString(results_handle.read())
+		self.obs_recs_xmlstring = GbifDarwincoreXmlString(results_handle.read())
 				
-		print 'XML search results stored via: "self.obs_recs_xmlstring = XmlString(results_handle.read())"'
+		print 'XML search results stored via: "self.obs_recs_xmlstring = GbifDarwincoreXmlString(results_handle.read())"'
 		
 		return self.obs_recs_xmlstring
 
@@ -750,22 +886,22 @@ class ObsRecs():
 		print ''
 		print 'Running get_xml_hits(params)...'
 	
-		# Returns XmlString object
+		# Returns GbifDarwincoreXmlString object
 		# (stored in self.obs_recs_xmlstring)
 		self._get_hits(params)
 		
 		# Fix the xmlstring:
 		# returns a plain string
 		plain_xmlstring_fixed = self.obs_recs_xmlstring.fix_ASCII_lines('\n')
-		#temp_xmlstring.splitlines() works because XmlString inherits from string class
+		#temp_xmlstring.splitlines() works because GbifDarwincoreXmlString inherits from string class
 		
-		# Store the plain string in an XmlString object, store as method of
-		# GbifXml object
-		self.obs_recs_xmlstring = XmlString(plain_xmlstring_fixed)
+		# Store the plain string in an GbifDarwincoreXmlString object, store as method of
+		# GbifXmlTree object
+		self.obs_recs_xmlstring = GbifDarwincoreXmlString(plain_xmlstring_fixed)
 				
-		# make sure the self.obs_recs_xmlstring (an XmlString object) parses into an ElementTree
+		# make sure the self.obs_recs_xmlstring (an GbifDarwincoreXmlString object) parses into an ElementTree
 		try:
-			self.xmltree = ET.ElementTree(ET.fromstring(self.obs_recs_xmlstring))
+			self.gbif_recs_xmltree = GbifXmlTree(ET.ElementTree(ET.fromstring(self.obs_recs_xmlstring)))
 			print_it = 0
 			if print_it == 1:
 				print ''
@@ -773,11 +909,11 @@ class ObsRecs():
 				print self.obs_recs_xmlstring
 				print ''
 		except Exception, inst:
-			print "Unexpected error opening %s: %s" % ('"self.obs_recs_xmlstring = XmlString(plain_xmlstring_fixed)"', inst)
+			print "Unexpected error opening %s: %s" % ('"self.obs_recs_xmlstring = GbifDarwincoreXmlString(plain_xmlstring_fixed)"', inst)
 		
 		#self.print_xmltree
 		
-		return self.xmltree
+		return 
 
 
 
@@ -799,7 +935,7 @@ class ObsRecs():
 		results_handle = self.access_gbif(url, params)
 		
 		#print results_handle.read()
-		xmlstring = XmlString(results_handle.read())
+		xmlstring = GbifDarwincoreXmlString(results_handle.read())
 		
 		# Save to a tempfile
 		"""
@@ -823,7 +959,7 @@ class ObsRecs():
 		print xmlstring2
 		
 		xmltree = ET.ElementTree(ET.fromstring(xmlstring2))
-		temp = GbifXml(xmltree)
+		temp = GbifXmlTree(xmltree)
 		temp.print_xmltree()
 		
 		return xmltree
@@ -853,28 +989,28 @@ class ObsRecs():
 		cmd = url + self.count_params_str
 		results_handle = self.access_gbif(url, params)
 		
-		self.count_recs_xmlstring = XmlString(results_handle.read())
+		self.count_recs_xmlstring = GbifDarwincoreXmlString(results_handle.read())
 		
 		
 		
 		# Fix xmlstring
 		plain_xmlstring_fixed = self.count_recs_xmlstring.fix_ASCII_lines('\n')
-		#temp_xmlstring.splitlines() works because XmlString inherits from string class
+		#temp_xmlstring.splitlines() works because GbifDarwincoreXmlString inherits from string class
 		
-		# Store the plain string in an XmlString object, store as method of
-		# GbifXml object
-		self.count_recs_xmlstring = XmlString(plain_xmlstring_fixed)
+		# Store the plain string in an GbifDarwincoreXmlString object, store as method of
+		# GbifXmlTree object
+		self.count_recs_xmlstring = GbifDarwincoreXmlString(plain_xmlstring_fixed)
 				
-		# make sure the self.obs_recs_xmlstring (an XmlString object) parses into an ElementTree
+		# make sure the self.obs_recs_xmlstring (an GbifDarwincoreXmlString object) parses into an ElementTree
 		try:
-			self.gbif_count_xmltree = GbifXml(ET.ElementTree(ET.fromstring(self.count_recs_xmlstring)))
+			self.gbif_count_xmltree = GbifXmlTree(ET.ElementTree(ET.fromstring(self.count_recs_xmlstring)))
 		except Exception, inst:
-			print "Unexpected error opening %s: %s" % ('"self.count_recs_xmlstring = XmlString(plain_xmlstring_fixed)"', inst)
+			print "Unexpected error opening %s: %s" % ('"self.count_recs_xmlstring = GbifDarwincoreXmlString(plain_xmlstring_fixed)"', inst)
 
 		
 		#print_xmltree(xmltree)
 
-		# Get the element from the xmltree attribute of the GbifXml object stored in self
+		# Get the element from the xmltree attribute of the GbifXmlTree object stored in self
 		for element in self.gbif_count_xmltree.xmltree.getroot():
 			temp_numhits = self.gbif_count_xmltree.extract_numhits(element)
 			if temp_numhits != None:
@@ -939,10 +1075,14 @@ class ObsRecs():
 		print "#hits = ", numhits
 		list_of_chunks = range(0, numhits-1, inc)
 
-		# Set up tempfile
+		# Set up list of xmlstring results
+		"""
 		from cStringIO import StringIO
 		file_str = StringIO()
-
+		"""
+		self.gbif_xmltree_list = []
+		
+		
 		# Set up url to parse
 		# instructions: http://data.gbif.org/ws/rest/occurrence
 		url = 'http://data.gbif.org/ws/rest/occurrence/list'
@@ -961,22 +1101,60 @@ class ObsRecs():
 	
 			results_handle = self.access_gbif(url, params)
 		
-			xmlstring = XmlString(results_handle.read())
-			xmlstring2 = xmlstring.fix_ASCII_lines('\n')
+			# returns GbifDarwincoreXmlString
+			temp_xmlstring = GbifDarwincoreXmlString(results_handle.read())
+			
+			# returns plain string
+			xmlstring2 = temp_xmlstring.fix_ASCII_lines('\n')
+			
+			# Close results_handle
 			results_handle.close()
 			
 			# Add these latlongs to filestr
 			try:
-				gbifxml = GbifXml(ET.ElementTree(ET.fromstring(xmlstring2)))
+				gbif_xmltree = GbifXmlTree(ET.ElementTree(ET.fromstring(xmlstring2)))
+				
+				# Append the xmltree
+				self.gbif_xmltree_list.append(gbif_xmltree)
+				
+				# Search through it to get the occurrences to add
+				self.extract_occurrences_from_gbif_xmltree(gbif_xmltree)
+				
 			except:
 				print ''
-				print '...printing xmlstring2...'
+				print '...failure to parse xmltree2 into ElementTree, printing xmlstring2...'
 				print xmlstring2
-			gbifxml._extract_latlong_datum(gbifxml.xmltree.getroot(), file_str)
+		
+		return self.gbif_xmltree_list
 
-						
-		return file_str.getvalue()
+
 	
+	def extract_occurrences_from_gbif_xmltree_list(self, gbif_xmltree):
+		"""
+		Extract all of the 'TaxonOccurrence' elements to a list, store them in a GbifObservationRecord.
+		"""
+		
+		start_element = gbif_xmltree.xmltree.getroot()
+		
+		# Element to pull out:
+		el_to_match = 'TaxonOccurrence'
+
+
+		# Get all occurrences:
+		occurrences_list = gbif_xmltree.extract_all_matching_elements(start_element, el_to_match)
+		
+		# For each one, extract info
+		for element in occurrences_list:
+			# Make a temporary observation record
+			temp_observation = GbifObservationRecord()
+			
+			# Populate it from the element
+			temp_observation.parse_occurrence_element(element)
+			
+			# Add the observation to the list
+			self.obs_recs_list.append(temp_observation)
+		
+		return
 
 
 	def _paramsdict_to_string(self, params):
