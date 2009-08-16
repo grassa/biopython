@@ -1,6 +1,6 @@
 
 #
-# Trees.py 
+# Trees_v2.py 
 #
 # Copyright 2005-2008 by Frank Kauff & Cymon J. Cox. All rights reserved.
 # This code is part of the Biopython distribution and governed by its
@@ -15,7 +15,8 @@
 #
 
 import sys, random, copy
-import Nodes
+from Bio.Nexus import Nodes
+
 try:
     #Check the built in set function is present (python 2.4+)
     set = set
@@ -62,14 +63,15 @@ class Tree(Nodes.Chain):
         self.rooted=rooted
         self.name=name
         root=Nodes.Node(data())
-        self.add(root)
-        self.root=root.id
+        self.root = self.add(root)
         if tree:    # use the tree we have
             # if Tree is called from outside Nexus parser, we need to get rid of linebreaks, etc
             tree=tree.strip().replace('\n','').replace('\r','')
             # there's discrepancy whether newick allows semicolons et the end
             tree=tree.rstrip(';')
-            self._add_subtree(parent_id=root.id,tree=self._parse(tree)[0])
+            subtree_info, base_info = self._parse(tree)
+            root.data = self._add_nodedata(root.data, [[], base_info])
+            self._add_subtree(parent_id=root.id,tree=subtree_info)
         
     def _parse(self,tree):
         """Parses (a,b,c...)[[[xx]:]yy] into subcomponents and travels down recursively."""
@@ -119,47 +121,46 @@ class Tree(Nodes.Chain):
         if parent_id is None:
             raise TreeError('Need node_id to connect to.')
         for st in tree:
+            nd=self.dataclass()
+            nd = self._add_nodedata(nd, st)
             if type(st[0])==list: # it's a subtree
-                nd=self.dataclass()
-                if isinstance(st[1][-1],str) and st[1][-1].startswith(NODECOMMENT_START): # last element of values is a text and starts with [&
-                    nd.comment=st[1].pop(-1)
-                if len(st[1])>=2: # if there's two values, support comes first. Is that always so?
-                    nd.support=st[1][0]
-                    if st[1][1] is not None:
-                        nd.branchlength=st[1][1]
-                elif len(st[1])==1: # otherwise it could be real branchlengths or support as branchlengths
-                    if not self.__values_are_support: # default
-                        if st[1][0] is not None:
-                            nd.branchlength=st[1][0]
-                    else:
-                        nd.support=st[1][0]
                 sn=Nodes.Node(nd)
                 self.add(sn,parent_id)
                 self._add_subtree(sn.id,st[0])
             else: # it's a leaf
-                nd=self.dataclass()
-                if isinstance(st[1][-1],str) and st[1][-1].startswith(NODECOMMENT_START):
-                    nd.comment=st[1].pop(-1)
                 nd.taxon=st[0]
-                if len(st)>1:
-                    if len(st[1])>=2: # if there's two values, support comes first. Is that always so?
-                        nd.support=st[1][0]
-                        if st[1][1] is not None:
-                            nd.branchlength=st[1][1]
-                    elif len(st[1])==1: # otherwise it could be real branchlengths or support as branchlengths
-                        if not self.__values_are_support: # default
-                            if st[1][0] is not None:
-                                nd.branchlength=st[1][0]
-                        else:
-                            nd.support=st[1][0]
                 leaf=Nodes.Node(nd)
                 self.add(leaf,parent_id)
-    
+
+    def _add_nodedata(self, nd, st):
+        """Add data to the node parsed from the comments, taxon and support.
+        """
+        if isinstance(st[1][-1],str) and st[1][-1].startswith(NODECOMMENT_START):
+            nd.comment=st[1].pop(-1)
+        # if the first element is a string, it's the subtree node taxon
+        elif isinstance(st[1][0], str):
+            nd.taxon = st[1][0]
+            st[1] = st[1][1:]
+        if len(st)>1:
+            if len(st[1])>=2: # if there's two values, support comes first. Is that always so?
+                nd.support=st[1][0]
+                if st[1][1] is not None:
+                    nd.branchlength=st[1][1]
+            elif len(st[1])==1: # otherwise it could be real branchlengths or support as branchlengths
+                if not self.__values_are_support: # default
+                	if st[1][0] is not None:
+                	    nd.branchlength=st[1][0]
+                else:
+                    nd.support=st[1][0]
+        return nd
+
+   
     def _get_values(self, text):
         """Extracts values (support/branchlength) from xx[:yyy], xx."""
        
         if text=='':
             return None
+        nodecomment = None
         if NODECOMMENT_START in text: # if there's a [&....] comment, cut it out
             nc_start=text.find(NODECOMMENT_START)
             nc_end=text.find(NODECOMMENT_END)
@@ -168,11 +169,23 @@ class Tree(Nodes.Chain):
                                 % (NODECOMMENT_START, NODECOMMENT_END))
             nodecomment=text[nc_start:nc_end+1]
             text=text[:nc_start]+text[nc_end+1:]
-            values=[float(t) for t in text.split(':') if t.strip()]
+        
+        # pase out supports and branchlengths, with internal node taxa info
+        values = []
+        taxonomy = None
+        for part in [t.strip() for t in text.split(":")]:
+            if part:
+                try:
+                    values.append(float(part))
+                except ValueError:
+                    assert taxonomy is None, "Two string taxonomies?"
+                    taxonomy = part
+        if taxonomy:
+            values.insert(0, taxonomy)
+        if nodecomment:
             values.append(nodecomment)
-        else:
-            values=[float(t) for t in text.split(':') if t.strip()]
         return values
+
    
     def _walk(self,node=None):
         """Return all node_ids downwards from a node."""
@@ -251,6 +264,7 @@ class Tree(Nodes.Chain):
                     self.collapse(prev)
                     self.node(succ).data.branchlength=new_bl
             return prev
+
         
     def get_taxa(self,node_id=None):
         """Return a list of all otus downwards from a node (self, node_id).
@@ -400,24 +414,34 @@ class Tree(Nodes.Chain):
                         conflict.append((st1,sup1,st2,sup2,intersect,notin1,notin2))
         return conflict
         
-    def common_ancestor(self,node1,node2):
+    def common_ancestor(self,node1_id,node2_id):
         """Return the common ancestor that connects two nodes.
         
         node_id = common_ancestor(self,node1,node2)
+        
+        Takes node ids (integer number), not actual node address
         """
         
-        l1=[self.root]+self.trace(self.root,node1)
-        l2=[self.root]+self.trace(self.root,node2)
+        # Make two lists back to the root of the tree
+        l1=[self.root] + self.trace(self.root,node1_id)
+        l2=[self.root] + self.trace(self.root,node2_id)
+        
+        # Return the most recent common ancestor of the two nodes
         return [n for n in l1 if n in l2][-1]
 
 
-    def distance(self,node1,node2):
+    def distance(self,node1_id,node2_id):
         """Add and return the sum of the branchlengths between two nodes.
         dist = distance(self,node1,node2)
         """
         
-        ca=self.common_ancestor(node1,node2)
-        return self.sum_branchlength(ca,node1)+self.sum_branchlength(ca,node2)
+        # Get common ancestor
+        ca = self.common_ancestor(node1_id,node2_id)
+        
+        # Sum the branchlengths of each of the two nodes, back to that common ancestor
+        return self.sum_branchlength(ca,node1_id) + self.sum_branchlength(ca,node2_id)
+        
+        
 
     def is_monophyletic(self,taxon_list):
         """Return node_id of common ancestor if taxon_list is monophyletic, -1 otherwise.
