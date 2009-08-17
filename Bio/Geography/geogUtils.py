@@ -6,19 +6,10 @@ import unicodedata
 from AsciiDammit import asciiDammit
 import re, htmlentitydefs
 
-# These libraries come from the lagrange package:
+# :
 """
-http://code.google.com/p/lagrange/
-Lagrange is a Python package implementing likelihood models for geographic range evolution on phylogenetic trees, with methods for inferring rates of dispersal and local extinction and ancestral ranges.
 
-This software implements methods described in Ree, R H and S A Smith. 2008. Maximum likelihood inference of geographic range evolution by dispersal, local extinction, and cladogenesis. Systematic Biology 57(1):4-14. 
-
-GNU General Public License v2
 """
-import lagrange_newick
-import lagrange_phylo
-import lagrange_tree
-import lagrange_ascii
 
 def readshpfile(fn):
 	
