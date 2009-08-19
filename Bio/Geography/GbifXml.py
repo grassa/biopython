@@ -5,20 +5,13 @@ Functions for accessing GBIF, downloading records, processing them into a class,
 from xml.etree import ElementTree as ET
 
 # Functions used generally (list, string functions)
-import GenUtils
-
-# Used by fix_ASCII
-# Used by unescape
-import unicodedata
-import re, htmlentitydefs
-# Public domain module to convert diverse characters to ASCII (dammit!)
-# http://newsbruiser.tigris.org/source/browse/~checkout~/newsbruiser/nb/lib/AsciiDammit.py
-from AsciiDammit import asciiDammit
-
+import GeneralUtils
+#from Bio.Geography import GeneralUtils
+from GeneralUtils import fix_ASCII_line, fix_ASCII_lines
 
 # Used by classification utility
-import ShapefileUtils
-import DbfUtils
+#from Bio.Geography.GeogUtils import point_inside_polygon
+from GeogUtils import point_inside_polygon
 
 
 # Used by self._open
@@ -48,16 +41,19 @@ class GbifObservationRecord():
 		self.long = None
 		self.earlydate = None
 		self.taxonconceptkey = None
+		self.taxonname = None
+		self.namecomplete = None
 		self.taxon = None
 		self.genus = None
 		self.species = None
 		self.scientific = None
 		self.latedate = None
+		self.area = None # This is not taken from XML, it is determined by classify_point_into_area
 		
 	
 	def latlong_to_obj(self, line):
 		"""
-		Read in a string, read species/lat/long to GbifObservationRecord object
+		Read in a string which consists of a simple table, read species/lat/long to GbifObservationRecord object
 		# This can be slow, e.g. 10 seconds for even just ~1000 records.
 		"""
 		print line
@@ -79,6 +75,21 @@ class GbifObservationRecord():
 		
 		return
 
+
+	def classify_point_into_area(self, poly, polyname):
+		"""
+		Fill in the self.area attribute with polygon name "poly" if it falls within the polygon "poly".  Otherwise, don't change self.area (which will be "None" or a previously-determined value. Uses GeogUtils library.
+		"""
+		x = self.long
+		y = self.lat
+		inside = point_inside_polygon(x,y,poly)
+		
+		if inside == True:
+			self.area = polyname
+		
+		return self.area
+		
+
 	def parse_occurrence_element(self, element):
 		"""
 		Parse a TaxonOccurrence element, store in OccurrenceRecord
@@ -91,7 +102,6 @@ class GbifObservationRecord():
 			pass
 		
 		# Get the catalog number
-		self.fill_occ_attribute(element, 'catalogNumber')
 		self.catalognum = self.fill_occ_attribute(element, 'catalogNumber', 'str')
 		self.country = self.fill_occ_attribute(element, 'country', 'str')
 		self.lat = self.fill_occ_attribute(element, 'decimalLatitude', 'float')
@@ -104,8 +114,9 @@ class GbifObservationRecord():
 				self.taxonconceptkey = matching_subel.attrib['gbifKey']
 		except:
 			pass
-			
-		self.taxon = self.fill_occ_attribute(element, 'nameComplete', 'str')
+
+		self.taxonname = self.fill_occ_attribute(element, 'TaxonName', 'str')			
+		self.namecomplete = self.fill_occ_attribute(element, 'nameComplete', 'str')
 		self.genus = self.fill_occ_attribute(element, 'genusPart', 'str')
 		self.species = self.fill_occ_attribute(element, 'specificEpithet', 'str')
 		self.scientific = self.fill_occ_attribute(element, 'scientific', 'str')
@@ -121,19 +132,27 @@ class GbifObservationRecord():
 		return_element = None
 		matching_el = self.find_1st_matching_subelement(element, el_tag, return_element)
 		
+		#print matching_el
+		
+		# Typing these variables makes it go much faster.
 		if matching_el is not None:
-			try:
-				result = matching_el.text
-				if result == '':
-					return None
-				elif result == 'true':
-					return bool(True)
-				elif result == 'false':
-					return bool(False)
+			result = matching_el.text
+			if result == '':
+				return None
+			elif result == 'true':
+				return bool(True)
+			elif result == 'false':
+				return bool(False)
+			else:
+				if format == 'str':
+					return str(fix_ASCII_line(result))
 				else:
-					return eval(format + '(' + result + ')')
-			except:
-				pass
+					textstr = format + '(' + result + ')'
+					try: 
+						return eval(textstr)
+					except:
+						textstr = "Expected type (" + format + ") not matched. String version: " + str(fix_ASCII_line(result))
+						return textstr
 		else:
 			return None
 		return None
@@ -143,17 +162,23 @@ class GbifObservationRecord():
 		"""
 		Burrow down into the XML tree, retrieve the first element with the matching tag.
 		"""
-		if return_element == None:
-			if element.tag == el_tag:
-				return_element = element
-			else:
-				children = element.getchildren()
-				if len(children) > 0:
-					for child in children:
-						return_element = self.find_1st_matching_subelement(child, el_tag, return_element)
-			return return_element	
-		else:
+		if element.tag.endswith(el_tag):
+			return_element = element
 			return return_element
+		else:
+			children = element.getchildren()
+			if len(children) > 0:
+				for child in children:
+					return_element = self.find_1st_matching_subelement(child, el_tag, return_element)
+					
+					# Check if it was found
+					if return_element is not None:
+						#print return_element
+						return return_element
+			# If it wasn't found, return the empty element
+			#print return_element
+			return return_element
+						
 
 
 	def record_to_string(self):
@@ -161,7 +186,7 @@ class GbifObservationRecord():
 		Print the attributes of a record to a string
 		"""
 		
-		temp_attributes_list = [self.gbifkey, self.catalognum, self.country, self.lat, self.long, self.earlydate, self.taxonconceptkey, self.taxon, self.genus, self.species, self.scientific, self.latedate]
+		temp_attributes_list = [self.gbifkey, self.catalognum, self.country, self.lat, self.long, self.earlydate, self.taxonconceptkey, self.taxonname, self.namecomplete, self.taxon, self.genus, self.species, self.scientific, self.latedate, self.area]
 		
 		str_attributes_list = []
 		for item in temp_attributes_list:
@@ -200,83 +225,7 @@ class GbifDarwincoreXmlString(str):
 		
 		#return self.plainstring
 		
-
-
-	def fix_ASCII_lines(self, endline=''):
-		"""
-		Convert each line in an input string into pure ASCII
-		(This avoids crashes when printing to screen, etc.)
-		"""
-		# Split the plain string into a list of lines
-		lines = self.splitlines()
-		
-		newstr_list = []
-		for line in lines:
-			ascii_content = self._fix_ASCII_line(line)
-			newstr_list.append(ascii_content + endline)
-		
-		# Returns a plain string (with linebreaks specified by endline)
-		return ''.join(newstr_list)
-
-	
-	def _fix_ASCII_line(self, line):
-		"""
-		Convert a single string line into pure ASCII
-		(This avoids crashes when printing to screen, etc.)
-		"""
-		# library from here: http://effbot.org/zone/re-sub.htm#unescape-html
-		ascii_content1 = self._unescape(line)
-		
-		# Public domain module to convert diverse characters to ASCII
-		# http://newsbruiser.tigris.org/source/browse/~checkout~/newsbruiser/nb/lib/AsciiDammit.py
-		ascii_content2 = asciiDammit(ascii_content1)
-		
-		# inspiration: http://www.amk.ca/python/howto/unicode
-		ascii_content3 = unicodedata.normalize('NFKC', unicode(ascii_content2)).encode('ascii','ignore')
-		
-		# Fix the ampersand
-		ascii_content = self._fix_ampersand(ascii_content3)
-		return ascii_content
-		
-
-	def _unescape(self, text):
-		"""
-		##
-		# Removes HTML or XML character references and entities from a text string.
-		#
-		# @param text The HTML (or XML) source text.
-		# @return The plain text, as a Unicode string, if necessary.
-		# source: http://effbot.org/zone/re-sub.htm#unescape-html
-		"""
-		def fixup(m):
-			text = m.group(0)
-			if text[:2] == "&#":
-				# character reference
-				try:
-					if text[:3] == "&#x":
-						return unichr(int(text[3:-1], 16))
-					else:
-						return unichr(int(text[2:-1]))
-				except ValueError:
-					pass
-			else:
-				# named entity
-				try:
-					text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
-				except KeyError:
-					pass
-			return text # leave as is
-		return re.sub("&#?\w+;", fixup, text)
-		
-	
-	def _fix_ampersand(self, line):
-		"""
-		Replaces "&" with "&amp;" in a string; this is otherwise 
-		not caught by the unescape and unicodedata.normalize functions.
-		"""
-		return line.replace('&', '&amp;')
-	
-	
+						
 	
 
 class GbifXmlTreeError(Exception): pass
@@ -326,17 +275,17 @@ class GbifXmlTree():
 		"""	
 		if element.__len__() == 0:
 			# Print the text beginning the tag header, and between the tags
-			print element.tag, element.text
+			print fix_ASCII_line(element.tag), fix_ASCII_line(element.text)
 	
 			# Check for any key/value pairs included in the tag header,
 			# and print them if they exist
 			if len(element.items()) > 0:
-				print "Encoded items: ", element.items()
+				print "Encoded items: ", fix_ASCII_line(repr(element.items()))
 			return
 		elif element.__len__() > 0:
-			print element.tag, element.text, "#subelements =", element.__len__()
+			print fix_ASCII_line(element.tag), fix_ASCII_line(element.text), "#subelements =", element.__len__()
 			if len(element.items()) > 0:
-				print "Encoded items: ", element.items()
+				print "Encoded items: ", fix_ASCII_line(repr(element.items()))
 	
 			for subelement in element.getchildren():
 				self.print_subelements(subelement)
@@ -645,6 +594,8 @@ class GbifXmlTree():
 				if len(children) > 0:
 					for child in children:
 						return_element = self.find_1st_matching_element(child, el_tag, return_element)
+						if return_element is not None:
+							return return_element
 			return return_element	
 		else:
 			return return_element
@@ -755,7 +706,13 @@ class GbifSearchResults():
 		"""
 		
 		for index, record in enumerate(self.obs_recs_list):
+			# Get string for record
 			print_string = record.record_to_string()
+			
+			# Fix ASCII
+			print_string2 = fix_ASCII_line(print_string)
+			
+			# Print it
 			print str(index+1) + '\t' + print_string
 		
 		return
@@ -781,6 +738,24 @@ class GbifSearchResults():
 		return fn
 
 
+	def classify_records_into_area(self, poly, polyname):
+		"""
+		Take all of the records in the GbifSearchResults object, fill in their area attribute if they fall within the polygon poly.
+		"""
+		
+		if self.obs_recs_list == []:
+			print 'Error: No records stored in self.obs_recs_list.'
+			return
+		
+		matching_count = 0
+		for record in self.obs_recs_list:
+			record.classify_point_into_area(poly, polyname)
+			if record.area == polyname:
+				matching_count = matching_count + 1
+		
+		print str(matching_count) + " of " + str(len(self.obs_recs_list)) + ' fell inside area "' + polyname + '".'
+		
+		return
 
 
 	def latlongs_to_obj(self):
@@ -878,8 +853,11 @@ class GbifSearchResults():
 		
 		# Fix the xmlstring:
 		# returns a plain string
-		plain_xmlstring_fixed = self.obs_recs_xmlstring.fix_ASCII_lines('\n')
-		#temp_xmlstring.splitlines() works because GbifDarwincoreXmlString inherits from string class
+		plain_xmlstring_fixed = self.obs_recs_xmlstring.plainstring
+		#plain_xmlstring_fixed = fix_ASCII_lines(self.obs_recs_xmlstring)
+
+
+		# (temp_xmlstring.splitlines() works because GbifDarwincoreXmlString inherits from string class)
 		
 		# Store the plain string in an GbifDarwincoreXmlString object, store as method of
 		# GbifXmlTree object
@@ -892,12 +870,12 @@ class GbifSearchResults():
 			if print_it == 1:
 				print ''
 				print "Printing xmlstring_fixed..."
-				print self.obs_recs_xmlstring
+				fixed_string = fix_ASCII_lines(self.obs_recs_xmlstring)
+				print fixed_string
 				print ''
 		except Exception, inst:
 			print "Unexpected error opening %s: %s" % ('"self.obs_recs_xmlstring = GbifDarwincoreXmlString(plain_xmlstring_fixed)"', inst)
 		
-		#self.print_xmltree
 		
 		return 
 
@@ -932,7 +910,7 @@ class GbifSearchResults():
 		"""
 		
 		# returns plain string, with linebreaks for parsing with ET.fromstring
-		xmlstring2 = xmlstring.fix_ASCII_lines('\n')
+		xmlstring2 = fix_ASCII_lines(xmlstring.plainstring)
 		
 		"""
 		fh = open(fn, 'r')
@@ -940,13 +918,13 @@ class GbifSearchResults():
 		fh.close()
 		"""
 		
-		print ''
-		print 'xmlstring2'
-		print xmlstring2
+		#print ''
+		#print 'xmlstring2'
+		#print xmlstring2
 		
-		xmltree = ET.ElementTree(ET.fromstring(xmlstring2))
+		xmltree = ET.ElementTree(ET.fromstring(xmlstring))
 		temp = GbifXmlTree(xmltree)
-		temp.print_xmltree()
+		#temp.print_xmltree()
 		
 		return xmltree
 
@@ -980,7 +958,8 @@ class GbifSearchResults():
 		
 		
 		# Fix xmlstring
-		plain_xmlstring_fixed = self.count_recs_xmlstring.fix_ASCII_lines('\n')
+		#plain_xmlstring_fixed = fix_ASCII_lines(self.count_recs_xmlstring)
+		plain_xmlstring_fixed = self.count_recs_xmlstring
 		#temp_xmlstring.splitlines() works because GbifDarwincoreXmlString inherits from string class
 		
 		# Store the plain string in an GbifDarwincoreXmlString object, store as method of
@@ -1075,13 +1054,12 @@ class GbifSearchResults():
 
 		# download them by increment	
 		for index, startindex in enumerate(list_of_chunks):
-		
 			if startindex + inc  > numhits:
-				print "Downloading records# ", startindex, numhits-1
+				print "Downloading records #" + str(startindex) + "-" + str(numhits-1) + " of " + str(numhits) +" (-1)."
 				params['startindex'] = str(startindex)
 				params['maxresults'] = str(numhits - startindex)
 			else:
-				print "Downloading records# ", startindex, startindex+inc
+				print "Downloading records #" + str(startindex) + "-" + str(startindex+inc-1) + " of " + str(numhits) +" (-1)."
 				params['startindex'] = str(startindex)
 				params['maxresults'] = str(inc)
 	
@@ -1093,11 +1071,44 @@ class GbifSearchResults():
 			
 			# returns plain string
 			#xmlstring2 = temp_xmlstring.fix_ASCII_lines('\n')
-			xmlstring2 = temp_xmlstring.plainstring
+			xmlstring2 = temp_xmlstring
+			
+
+
+			#Bug-checking; make True if you want to see the xmlstring as a text file
+			xmlstring_tofile = False
+			if xmlstring_tofile == True:
+				error_fh = open('error2.txt', 'w')
+				error_fh.write(xmlstring2)
+				error_fh.close()
+				
+			
+			"""
+			import re
+			from GbifXml import GbifDarwincoreXmlString
+		
+			url = 'http://data.gbif.org/ws/rest/occurrence/list'
+			results_handle = recs3.access_gbif(url, params)
+			temp_xmlstring = GbifDarwincoreXmlString(results_handle.read())
+			xmlstring2 = temp_xmlstring.fix_ASCII_lines('\n')
+			
+			error_fh = open('error.txt', 'w')
+			error_fh.write(xmlstring2)
+			error_fh.close()
+			
+			error_fh = open('error.txt', 'r')
+			lines = error_fh.readlines()
+			
+			
+			lines = error_fh.readlines()
+			temp_xmlstring = GbifDarwincoreXmlString(lines)
+			xmlstring2 = temp_xmlstring.fix_ASCII_lines('\n')
+			"""
 			
 			# Close results_handle
 			results_handle.close()
-			
+
+			#try:				
 			# Add these latlongs to filestr
 			gbif_xmltree = GbifXmlTree(ET.ElementTree(ET.fromstring(xmlstring2)))
 			
@@ -1106,16 +1117,15 @@ class GbifSearchResults():
 			
 			# Search through it to get the occurrences to add
 			self.extract_occurrences_from_gbif_xmltree(gbif_xmltree)
-		
+			
 			"""
-			except:
-				print ''
-				print '...failure to parse xmlstring2 into ElementTree...'
-				error_fh = open('error.txt', 'w')
-				error_fh.write(xmlstring2)
-				error_fh.close()
-				print ''
-				print '...failure to parse xmlstring2 into ElementTree, xmlstring2 written to error.txt...'
+			except ExpatError:
+			error_fh = open('error.txt', 'w')
+			error_fh.write(xmlstring2)
+			error_fh.close()
+			print ''
+			print '...failure to parse xmlstring2 into ElementTree, xmlstring2 written to error.txt...'
+			#print ExpatError
 			"""
 		return self.gbif_xmltree_list
 
@@ -1124,6 +1134,23 @@ class GbifSearchResults():
 	def extract_occurrences_from_gbif_xmltree(self, gbif_xmltree):
 		"""
 		Extract all of the 'TaxonOccurrence' elements to a list, store them in a GbifObservationRecord.
+		"""
+		
+		
+		"""
+		# Debugging:
+		gbif_xmltree = recs3.gbif_xmltree_list[0]
+		start_element = gbif_xmltree.xmltree.getroot()
+		el_to_match = 'TaxonOccurrence'
+		occurrences_list = gbif_xmltree.extract_all_matching_elements(start_element, el_to_match)
+		element = occurrences_list[len(occurrences_list)-1]
+		element.getchildren()
+		from GbifXml import GbifObservationRecord
+		self = GbifObservationRecord()
+		el_tag = 'nameComplete'
+		self.taxon = self.fill_occ_attribute(element, el_tag, 'str')
+		return_element = None
+		x=self.find_1st_matching_subelement(element, el_tag, return_element)
 		"""
 		
 		start_element = gbif_xmltree.xmltree.getroot()
@@ -1135,7 +1162,7 @@ class GbifSearchResults():
 		# Get all occurrences:
 		occurrences_list = gbif_xmltree.extract_all_matching_elements(start_element, el_to_match)
 		
-		print occurrences_list
+		#print occurrences_list
 		
 		# For each one, extract info
 		for element in occurrences_list:
@@ -1145,7 +1172,7 @@ class GbifSearchResults():
 			# Populate it from the element
 			temp_observation.parse_occurrence_element(element)
 			
-			print temp_observation.record_to_string
+			#print temp_observation.record_to_string()
 			
 			# Add the observation to the list
 			self.obs_recs_list.append(temp_observation)

@@ -6,7 +6,11 @@ TreeSum.py: Objects and functions concerned with reading in and manipulating phy
 
 # Used generally
 #import handyfunctions
-from handyfunctions import make_NaN_array, list1_items_in_list2, list1_items_not_in_list2
+#from Bio.Geography.GeneralUtils import make_NaN_array, list1_items_in_list2, list1_items_not_in_list2
+
+from GeneralUtils import make_NaN_array, list1_items_in_list2, list1_items_not_in_list2
+
+
 import copy
 import random
 from numpy import average, nanmin, isnan, isfinite, std

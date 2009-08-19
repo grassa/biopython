@@ -1,5 +1,4 @@
 #!/usr/bin/python
-import os
 
 print ""
 print ""
@@ -10,14 +9,17 @@ print ""
 
 
 import os
-from GbifXml import GbifXmlTree, GbifSearchResults
-#from Bio.Geography.GenUtils import fix_ASCII_file
-from GenUtils import fix_ASCII_file
+from Bio.Geography.GbifXml import GbifXmlTree, GbifSearchResults
+from Bio.Geography.GenUtils import fix_ASCII_file
+#from GbifXml import GbifXmlTree, GbifSearchResults
+#from GeneralUtils import fix_ASCII_file
 
 
 
 
 # Example filename
+# You can find this file in the biopython directory Tests/Geography
+# Example output in Tests/output/test_GbifXml
 xml_fn = 'utric_search_v2.xml'
 
 print ""
@@ -54,12 +56,12 @@ gbif_recs_xmltree = GbifXmlTree(xmltree)
 # Print the object:
 #  (also uses gbif_recs_xmltree.print_sublelements)
 
-print ''
-print 'Printing the GBIF object xmltree with print_xmltree...'
+#print ''
+#print 'Printing the GBIF object xmltree with print_xmltree...'
 #gbif_recs_xmltree.print_xmltree()
 
 
-
+"""
 # ======================
 # Testing extract_latlongs
 # ======================
@@ -67,35 +69,46 @@ print 'Printing the GBIF object xmltree with print_xmltree...'
 recs = GbifSearchResults(gbif_recs_xmltree)
 
 outstr = recs.gbif_recs_xmltree.extract_latlongs(gbif_recs_xmltree.root)
+print ''
+print 'Printing outstr'
 print outstr
+#recs.latlongs_to_obj()
+print ''
+print 'Printing all records'
+recs.print_records()
+"""
+
+
 
 # Make recs object hold all of the observation records
-recs.latlongs_to_obj()
+recs = GbifSearchResults(gbif_recs_xmltree)
+recs.extract_occurrences_from_gbif_xmltree(recs.gbif_recs_xmltree)
+print ''
+print 'Printing all records'
+recs.print_records()
 
 print ''
 print "Printing first five record objects..."
 print recs.obs_recs_list[0:4], '...'
-recs.print_records()
 
 
-
-
-
-# ========================
-# Testing get_numhits()
-# ========================
-params = {'format': 'darwin', 'scientificname': 'Utricularia'}
-recs2 = GbifSearchResults()
-recs2.get_numhits(params)
-
-
-
-# ========================
-# Testing get_record
-# ========================
+print ''
+print '# ========================'
+print '# Testing get_record'
+print '# ========================'
 key = 175067484
 recs3 = GbifSearchResults()
 xmlrec = recs3.get_record(key)
+print 'xmltree result:'
 print xmlrec
+
+print ''
+print '# ========================'
+print '# Testing get_numhits()'
+print '# ========================'
+params = {'format': 'darwin', 'scientificname': 'Utricularia*'}
+recs4 = GbifSearchResults()
+recs4.get_numhits(params)
+
 
 
