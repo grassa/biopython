@@ -143,6 +143,9 @@ class GbifObservationRecord():
 				return bool(True)
 			elif result == 'false':
 				return bool(False)
+			elif result == None:
+				#print "None check #1"
+				return None
 			else:
 				if format == 'str':
 					return str(fix_ASCII_line(result))
